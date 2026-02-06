@@ -1,0 +1,17 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = "file:./dev.db"
+}
+
+model WaitlistEntry {
+  id        String   @id @default(cuid())
+  email     String
+  name      String?
+  note      String?
+  source    String?
+  createdAt DateTime @default(now())
+}
