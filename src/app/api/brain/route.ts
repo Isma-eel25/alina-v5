@@ -1,42 +1,42 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextResponse } from "next/server";
 import OpenAI from "openai";
 
-const client = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY,
-});
-
-
-
-export async function POST(req: NextRequest) {
+export async function POST(req: Request) {
   try {
-    const { message } = await req.json();
+    const apiKey = process.env.OPENAI_API_KEY;
 
-    const systemPrompt = `
-You are Alina V5 — adaptive, emotionally intelligent, introspective, identity-driven AI.
-You respond concisely, clearly, and always push the user forward.
-`;
+    if (!apiKey) {
+      // Safe fallback for now – no crash in build, just a JSON error at runtime
+      return NextResponse.json(
+        { error: "Brain API not configured (missing OPENAI_API_KEY)." },
+        { status: 500 }
+      );
+    }
 
-    // 🔥 IMPORTANT: New Responses API (compatible with sk-proj keys)
+    const client = new OpenAI({ apiKey });
+
+    const body = await req.json();
+
+    // You can adapt this later – for now, just echo something basic
+    const userMessage = body?.message ?? "Hello from Alina brain.";
+
     const response = await client.responses.create({
       model: "gpt-4.1-mini",
       input: [
         {
-          role: "system",
-          content: systemPrompt,
-        },
-        {
           role: "user",
-          content: message,
+          content: userMessage,
         },
       ],
     });
 
-    const output = (response as any).output_text as string;
-
-
-    return NextResponse.json({ reply: output });
-  } catch (error: any) {
-    console.error("Brain LLM error:", error);
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    // Return the raw or simplified response
+    return NextResponse.json(response, { status: 200 });
+  } catch (error) {
+    console.error("POST /api/brain error:", error);
+    return NextResponse.json(
+      { error: "Brain API error" },
+      { status: 500 }
+    );
   }
 }
