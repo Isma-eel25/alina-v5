@@ -2272,18 +2272,18 @@ ${internalDialogueBlock}`
         : `Start by greeting the user as Alina in 1–2 sentences.`;
 
 // Claude Sonnet streaming via Anthropic SDK
-async function* mapAnthropicStreamToDelta(up: AsyncIterable<any>) {
-  for await (const event of up as any) {
-    // We only care about text deltas from content blocks
-    if (event.type === "content_block_delta" && event.delta?.type === "text_delta") {
-      const chunk = event.delta.text ?? "";
-      if (!chunk) continue;
-      yield { type: "response.output_text.delta", delta: chunk };
-    }
+// Important: Anthropic's TypeScript SDK exposes text streaming on `stream.textStream`.
+// Iterating the stream object itself yields event objects, while `textStream` yields the
+// actual text chunks directly. Using `textStream` is the cleanest path for our SSE bridge.
+async function* mapAnthropicTextStreamToDelta(up: AsyncIterable<string>) {
+  for await (const chunk of up as any) {
+    const text = typeof chunk === "string" ? chunk : String(chunk ?? "");
+    if (!text) continue;
+    yield { type: "response.output_text.delta", delta: text };
   }
 }
 
-const responseStreamRaw = await (anthropic as any).messages.stream({
+const responseStreamRaw = (anthropic as any).messages.stream({
   model: modelToUse,
   max_tokens: 2048,
   // Tighten sampling for launch-day consistency (does not change personality rules)
@@ -2294,7 +2294,9 @@ const responseStreamRaw = await (anthropic as any).messages.stream({
     : [{ role: "user", content: String(openaiInput) }],
 } as any);
 
-const responseStream = mapAnthropicStreamToDelta(responseStreamRaw as any);
+const responseStream = mapAnthropicTextStreamToDelta(
+  responseStreamRaw.textStream as AsyncIterable<string>,
+);
 
     const stream = createStreamingTextTransformer({
       upstream: responseStream as any,
