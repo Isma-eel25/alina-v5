@@ -80,6 +80,37 @@ function brainLog(
 }
 
 
+
+function buildBrainFallbackMessage(): string {
+  return "Something wobbled on my side just now. Give me one more shot.";
+}
+
+function createBrainJsonResponse(
+  content: string,
+  options?: {
+    status?: number;
+    setCookieHeader?: string | null;
+    extraBody?: Record<string, unknown>;
+  },
+): Response {
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json; charset=utf-8",
+    "Cache-Control": "no-store",
+  };
+  if (options?.setCookieHeader) headers["Set-Cookie"] = options.setCookieHeader;
+
+  return new Response(
+    JSON.stringify({
+      content,
+      ...(options?.extraBody ?? {}),
+    }),
+    {
+      status: options?.status ?? 200,
+      headers,
+    },
+  );
+}
+
 type ChatRole = "user" | "assistant" | "system";
 
 type ClinicalMood = LTM.ClinicalMood;
@@ -2324,61 +2355,90 @@ ${internalDialogueBlock}`
 // The frontend already supports JSON fallback when content-type is application/json.
 // This avoids Anthropic SDK stream-shape/version mismatches on Vercel.
 
-brainLog(requestId, "anthropic_request_started", {
-  userId: canonicalUserId,
-  model: modelToUse,
-  inputMessages: Array.isArray(openaiInput) ? openaiInput.length : 1,
-});
+    brainLog(requestId, "anthropic_request_started", {
+      userId: canonicalUserId,
+      model: modelToUse,
+      inputMessages: Array.isArray(openaiInput) ? openaiInput.length : 1,
+    });
 
-const response = await (anthropic as any).messages.create({
-  model: modelToUse,
-  max_tokens: 2048,
-  temperature: 0.55,
-  system: systemContent,
-  messages: Array.isArray(openaiInput)
-    ? openaiInput
-    : [{ role: "user", content: String(openaiInput) }],
-} as any);
+    let response: any;
+    try {
+      response = await (anthropic as any).messages.create({
+        model: modelToUse,
+        max_tokens: 2048,
+        temperature: 0.55,
+        system: systemContent,
+        messages: Array.isArray(openaiInput)
+          ? openaiInput
+          : [{ role: "user", content: String(openaiInput) }],
+      } as any);
+    } catch (error) {
+      brainLog(requestId, "anthropic_request_failed", {
+        userId: canonicalUserId,
+        model: modelToUse,
+        error:
+          error instanceof Error
+            ? error.message
+            : typeof error === "string"
+              ? error
+              : "unknown_error",
+      });
 
-brainLog(requestId, "anthropic_request_succeeded", {
-  userId: canonicalUserId,
-  model: modelToUse,
-  outputBlocks: Array.isArray((response as any)?.content)
-    ? (response as any).content.length
-    : 0,
-});
+      return createBrainJsonResponse(buildBrainFallbackMessage(), {
+        setCookieHeader,
+        extraBody: {
+          type: "brain_fallback",
+          reason: "anthropic_request_failed",
+        },
+      });
+    }
 
-const responseText = Array.isArray((response as any)?.content)
-  ? (response as any).content
-      .filter((block: any) => block?.type === "text" && typeof block?.text === "string")
-      .map((block: any) => block.text)
-      .join("")
-  : "";
+    brainLog(requestId, "anthropic_request_succeeded", {
+      userId: canonicalUserId,
+      model: modelToUse,
+      outputBlocks: Array.isArray((response as any)?.content)
+        ? (response as any).content.length
+        : 0,
+    });
 
-const finalText = topRef
-  ? ensureSingleFinalCitation(responseText, topRef)
-  : stripAnyMemoryReferenceText(responseText);
+    const responseText = Array.isArray((response as any)?.content)
+      ? (response as any).content
+          .filter((block: any) => block?.type === "text" && typeof block?.text === "string")
+          .map((block: any) => block.text)
+          .join("")
+      : "";
 
-    const headers: Record<string, string> = {
-      "Content-Type": "application/json; charset=utf-8",
-      "Cache-Control": "no-store",
-    };
-    if (setCookieHeader) headers["Set-Cookie"] = setCookieHeader;
+    const finalText = topRef
+      ? ensureSingleFinalCitation(responseText, topRef)
+      : stripAnyMemoryReferenceText(responseText);
+
+    const finalContent =
+      finalText || "Alina had nothing to say just then. Try again.";
 
     brainLog(requestId, "response_sent", {
       userId: canonicalUserId,
-      responseLength: finalText.length,
+      responseLength: finalContent.length,
       citedMemory: !!topRef,
     });
 
-    return new Response(
-      JSON.stringify({
-        content: finalText || "Alina had nothing to say just then. Try again.",
-      }),
-      { headers },
-    );
+    return createBrainJsonResponse(finalContent, {
+      setCookieHeader,
+    });
   } catch (error) {
+    brainLog(requestId, "request_failed", {
+      error:
+        error instanceof Error
+          ? error.message
+          : typeof error === "string"
+            ? error
+            : "unknown_error",
+    });
     console.error("Brain route error:", error);
-    return new Response("Brain route error", { status: 500 });
+    return createBrainJsonResponse(buildBrainFallbackMessage(), {
+      extraBody: {
+        type: "brain_fallback",
+        reason: "request_failed",
+      },
+    });
   }
 }
