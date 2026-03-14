@@ -59,35 +59,30 @@ const REFLECT_NEW_MESSAGES_GATE = 4;
 
 // Design System Colors
 const THEME = {
-  // Primary palette from reference image
   cyan: {
     400: "#22d3ee",
-    500: "#06b6d4", 
+    500: "#06b6d4",
     600: "#0891b2",
     glow: "rgba(6, 182, 212, 0.5)",
     subtle: "rgba(6, 182, 212, 0.1)",
   },
-  // Deep navy backgrounds
   navy: {
     900: "#020617",
     800: "#0f172a",
     700: "#1e293b",
     600: "#334155",
   },
-  // Surface colors
   surface: {
     primary: "rgba(15, 23, 42, 0.6)",
     elevated: "rgba(30, 41, 59, 0.8)",
     hover: "rgba(51, 65, 85, 0.5)",
   },
-  // Text hierarchy
   text: {
     primary: "#f8fafc",
     secondary: "#94a3b8",
     tertiary: "#64748b",
     muted: "#475569",
   },
-  // Gradients
   gradient: {
     hero: "linear-gradient(135deg, #0f172a 0%, #1e3a5f 50%, #0f172a 100%)",
     card: "linear-gradient(145deg, rgba(30, 41, 59, 0.9) 0%, rgba(15, 23, 42, 0.9) 100%)",
@@ -140,11 +135,6 @@ function formatRelativeTime(dateString: string): string {
 // SSE TOKEN EXTRACTOR (Preserves Whitespace)
 // ============================================
 function extractTokenFromSSEDataLine(line: string): string {
-  // SSE lines can be formatted as either:
-  //   "data: <payload>"  (most common, includes a separator space)
-  // or
-  //   "data:<payload>"   (no separator space)
-  // We must not accidentally delete legitimate leading spaces in the payload.
   let raw = line.startsWith("data: ") ? line.slice(6) : line.slice(5);
   raw = raw.replace(/\r$/, "");
 
@@ -154,16 +144,18 @@ function extractTokenFromSSEDataLine(line: string): string {
   if (first === "{" || first === "[") {
     try {
       const parsed: any = JSON.parse(raw);
+
       const delta =
         parsed?.choices?.[0]?.delta?.content ??
         parsed?.choices?.[0]?.delta?.text ??
         parsed?.choices?.[0]?.text ??
-        parsed?.delta ??
+        parsed?.delta?.text ??
+        parsed?.delta?.content ??
+        parsed?.completion ??
         parsed?.token ??
         parsed?.content ??
         parsed?.message?.content;
 
-      // Handle non-string deltas safely (e.g. numeric-only tokens)
       if (typeof delta === "string") return delta;
       if (typeof delta === "number" || typeof delta === "boolean") return String(delta);
 
@@ -174,12 +166,23 @@ function extractTokenFromSSEDataLine(line: string): string {
           .join("");
       }
 
+      const anthropicParts = parsed?.content;
+      if (Array.isArray(anthropicParts)) {
+        return anthropicParts
+          .map((p: any) => {
+            if (typeof p?.text === "string") return p.text;
+            if (typeof p?.content === "string") return p.content;
+            return "";
+          })
+          .join("");
+      }
+
       return "";
     } catch {
-      // Not JSON after all; fall through to returning raw.
       return raw;
     }
   }
+
   return raw;
 }
 
@@ -196,7 +199,7 @@ const MarkdownComponents = {
         <div className="relative group my-4 rounded-xl overflow-hidden border border-cyan-500/20">
           <div className="flex items-center justify-between px-4 py-2 bg-slate-900/80 border-b border-cyan-500/10">
             <span className="text-xs font-mono text-cyan-400">{language}</span>
-            <button 
+            <button
               onClick={() => navigator.clipboard.writeText(String(children).replace(/\n$/, ""))}
               className="text-xs text-slate-400 hover:text-cyan-400 transition-colors"
             >
@@ -223,8 +226,8 @@ const MarkdownComponents = {
     }
 
     return (
-      <code 
-        className="px-1.5 py-0.5 rounded-md bg-cyan-500/10 text-cyan-300 font-mono text-sm border border-cyan-500/20" 
+      <code
+        className="px-1.5 py-0.5 rounded-md bg-cyan-500/10 text-cyan-300 font-mono text-sm border border-cyan-500/20"
         {...props}
       >
         {children}
@@ -275,9 +278,9 @@ const MarkdownComponents = {
 
   a({ href, children }: any) {
     return (
-      <a 
-        href={href} 
-        target="_blank" 
+      <a
+        href={href}
+        target="_blank"
         rel="noopener noreferrer"
         className="text-cyan-400 hover:text-cyan-300 underline underline-offset-2 transition-colors"
       >
@@ -344,15 +347,15 @@ function AlinaLogo({ size = "md" }: { size?: "sm" | "md" | "lg" }) {
   );
 }
 
-function IconButton({ 
-  onClick, 
-  icon, 
-  title, 
+function IconButton({
+  onClick,
+  icon,
+  title,
   variant = "ghost",
-  active = false 
-}: { 
-  onClick: () => void; 
-  icon: React.ReactNode; 
+  active = false
+}: {
+  onClick: () => void;
+  icon: React.ReactNode;
   title: string;
   variant?: "ghost" | "primary" | "danger";
   active?: boolean;
@@ -378,7 +381,6 @@ function IconButton({
 // MAIN COMPONENT
 // ============================================
 export default function AlinaChat() {
-  // State
   const [sessions, setSessions] = useState<SessionV1[]>([]);
   const [activeSessionId, setActiveSessionId] = useState<string>("");
   const [selectedMemoryId, setSelectedMemoryId] = useState<string | null>(null);
@@ -393,7 +395,6 @@ export default function AlinaChat() {
 
   const router = useRouter();
 
-  // Refs
   const sessionsRef = useRef<SessionV1[]>([]);
   const activeSessionIdRef = useRef<string>("");
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -406,7 +407,6 @@ export default function AlinaChat() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [attachedFile, setAttachedFile] = useState<{ name: string; content: string } | null>(null);
 
-  // Memoized values
   const activeSession = useMemo(
     () => sessions.find((s) => s.id === activeSessionId) || null,
     [sessions, activeSessionId]
@@ -438,13 +438,9 @@ export default function AlinaChat() {
     return "calm";
   }, [activeSession, messages]);
 
-  // Keep refs in sync
   useEffect(() => { sessionsRef.current = sessions; }, [sessions]);
   useEffect(() => { activeSessionIdRef.current = activeSessionId; }, [activeSessionId]);
 
-  // ============================================
-  // PERSISTENCE & INITIALIZATION
-  // ============================================
   useEffect(() => {
     const loadSessions = () => {
       try {
@@ -483,7 +479,6 @@ export default function AlinaChat() {
     }
   }, [sessions, activeSessionId]);
 
-  // Auto-scroll handling
   useEffect(() => {
     const container = chatContainerRef.current;
     if (!container) return;
@@ -508,9 +503,6 @@ export default function AlinaChat() {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   };
 
-  // ============================================
-  // SESSION MANAGEMENT
-  // ============================================
   const createNewSession = useCallback((silent?: boolean) => {
     const fresh: SessionV1 = {
       id: makeId("sess"),
@@ -566,13 +558,10 @@ export default function AlinaChat() {
     return sessionsRef.current.find((s) => s.id === id) || null;
   }, []);
 
-  // ============================================
-  // MESSAGE HANDLING
-  // ============================================
   const handleSubmit = async (e?: FormEvent) => {
     e?.preventDefault();
     const trimmedInput = input.trim();
-    if (!trimmedInput && !attachedFile || isSending || !activeSessionIdRef.current) return;
+    if ((!trimmedInput && !attachedFile) || isSending || !activeSessionIdRef.current) return;
 
     setInput("");
     setIsSending(true);
@@ -601,7 +590,6 @@ export default function AlinaChat() {
     const nextMsgs = [...messages, userM, aiM];
     updateActiveSession({ messages: nextMsgs });
 
-    // Auto-resize textarea
     if (inputRef.current) {
       inputRef.current.style.height = "auto";
     }
@@ -630,7 +618,6 @@ export default function AlinaChat() {
 
       if (res.status === 402) {
         setShowUpgrade(true);
-        // Tell the user what happened in-chat (clean UX instead of "network error")
         updateActiveSession({
           messages: nextMsgs.map((m) =>
             m.id === aiM.id
@@ -641,7 +628,6 @@ export default function AlinaChat() {
         return;
       }
 
-
       if (!res.ok) {
         throw new Error(`Server error: ${res.status}`);
       }
@@ -651,7 +637,6 @@ export default function AlinaChat() {
       const ctype = res.headers.get("content-type") || "";
 
       if (!res.body || ctype.includes("application/json")) {
-        // Non-streaming fallback
         const data = await res.json().catch(() => null);
         const rawText = data?.content ?? data?.reply ?? data?.message ?? data?.text;
         const text = typeof rawText === "string" ? rawText : rawText != null ? String(rawText) : "Error processing response";
@@ -665,7 +650,6 @@ export default function AlinaChat() {
         return;
       }
 
-      // Streaming (SSE)
       const reader = res.body.pipeThrough(new TextDecoderStream()).getReader();
       let full = "";
       let buffer = "";
@@ -700,7 +684,6 @@ export default function AlinaChat() {
         }
       }
 
-      // Flush remaining buffer
       if (buffer.includes("data:")) {
         const lines = buffer.split("\n");
         let tail = "";
@@ -720,7 +703,6 @@ export default function AlinaChat() {
         }
       }
 
-      // Final update to mark streaming complete
       updateActiveSession({
         messages: nextMsgs.map((m) =>
           m.id === aiM.id ? { ...m, content: full, isStreaming: false } : m
@@ -729,7 +711,6 @@ export default function AlinaChat() {
 
       scheduleReflectIfEligible(nextMsgs.length);
 
-      // Update title after first exchange
       if (messages.length <= 2) {
         const title = generateSessionTitleFromMessages([...nextMsgs.slice(0, -1), { ...aiM, content: full }]);
         updateActiveSession({ title });
@@ -738,8 +719,8 @@ export default function AlinaChat() {
       const errorMsg = error instanceof Error ? error.message : "Unknown error occurred";
       updateActiveSession({
         messages: nextMsgs.map((m) =>
-          m.id === aiM.id 
-            ? { ...m, content: `**Error:** ${errorMsg}\n\nPlease try again.`, isStreaming: false } 
+          m.id === aiM.id
+            ? { ...m, content: `**Error:** ${errorMsg}\n\nPlease try again.`, isStreaming: false }
             : m
         ),
       });
@@ -757,14 +738,10 @@ export default function AlinaChat() {
 
   const handleInputChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
     setInput(e.target.value);
-    // Auto-resize
     e.target.style.height = "auto";
     e.target.style.height = `${Math.min(e.target.scrollHeight, 200)}px`;
   };
 
-  // ============================================
-  // REFLECTION SYSTEM
-  // ============================================
   const shouldTriggerReflect = (msgCount: number) => {
     const now = Date.now();
     if (reflectInFlightRef.current) return false;
@@ -864,9 +841,6 @@ export default function AlinaChat() {
     }, REFLECT_DEBOUNCE_MS);
   };
 
-  // ============================================
-  // RENDER
-  // ============================================
   if (!activeSession && sessions.length > 0) return null;
 
   return (
@@ -887,7 +861,6 @@ export default function AlinaChat() {
           </div>
         </div>
       )}
-      {/* Global Styles */}
       <style jsx global>{`
         @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
 
@@ -953,13 +926,11 @@ export default function AlinaChat() {
         }
       `}</style>
 
-      {/* Sidebar - Chat History */}
-      <aside 
+      <aside
         className={`flex flex-col border-r border-cyan-500/10 bg-[#0f172a]/80 backdrop-blur-xl transition-all duration-300 ${
           sidebarOpen ? "w-72" : "w-0 opacity-0 overflow-hidden"
         }`}
       >
-        {/* Sidebar Header */}
         <div className="p-4 border-b border-cyan-500/10">
           <div className="flex items-center gap-3 mb-4">
             <AlinaLogo size="sm" />
@@ -980,7 +951,6 @@ export default function AlinaChat() {
           </button>
         </div>
 
-        {/* Sessions List */}
         <div className="flex-1 overflow-y-auto custom-scrollbar p-3 space-y-1">
           {sessions.map((s) => (
             <div
@@ -1020,7 +990,6 @@ export default function AlinaChat() {
           ))}
         </div>
 
-        {/* Sidebar Footer */}
         <div className="p-4 border-t border-cyan-500/10">
           <div className="flex items-center gap-3 text-xs text-slate-500">
             <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
@@ -1029,15 +998,12 @@ export default function AlinaChat() {
         </div>
       </aside>
 
-      {/* Main Content */}
       <main className="flex-1 flex flex-col min-w-0 relative">
-        {/* Background Effects */}
         <div className="absolute inset-0 overflow-hidden pointer-events-none">
           <div className="absolute top-0 left-1/4 w-96 h-96 bg-cyan-500/5 rounded-full blur-3xl" />
           <div className="absolute bottom-0 right-1/4 w-96 h-96 bg-purple-500/5 rounded-full blur-3xl" />
         </div>
 
-        {/* Top Navigation */}
         <header className="h-16 border-b border-cyan-500/10 flex items-center justify-between px-4 bg-[#0f172a]/50 backdrop-blur-xl z-20">
           <div className="flex items-center gap-4">
             <button
@@ -1053,8 +1019,8 @@ export default function AlinaChat() {
               <button
                 onClick={() => setMode("chat")}
                 className={`px-4 py-1.5 rounded-md text-sm font-medium transition-all ${
-                  mode === "chat" 
-                    ? "bg-cyan-500/20 text-cyan-400" 
+                  mode === "chat"
+                    ? "bg-cyan-500/20 text-cyan-400"
                     : "text-slate-400 hover:text-slate-200"
                 }`}
               >
@@ -1063,8 +1029,8 @@ export default function AlinaChat() {
               <button
                 onClick={() => setMode("index")}
                 className={`px-4 py-1.5 rounded-md text-sm font-medium transition-all ${
-                  mode === "index" 
-                    ? "bg-purple-500/20 text-purple-400" 
+                  mode === "index"
+                    ? "bg-purple-500/20 text-purple-400"
                     : "text-slate-400 hover:text-slate-200"
                 }`}
               >
@@ -1092,7 +1058,6 @@ export default function AlinaChat() {
           </div>
         </header>
 
-        {/* Alina Locus */}
         <AlinaLocus
           mode={locusMode}
           sessionCount={sessions.length}
@@ -1110,10 +1075,8 @@ export default function AlinaChat() {
             activeSession?.vitals
               ? (() => {
                   const v = activeSession.vitals as any;
-                  // Convert 0-1 float OR string enum to 0-100 bar value
                   const toBar = (x: unknown) => {
                     if (typeof x === "number") return Math.round(Math.min(x <= 1 ? x * 100 : x, 100));
-                    // string enum -> number
                     const strMap: Record<string, number> = {
                       very_low: 5, low: 20, low_moderate: 30, moderate: 40,
                       neutral: 50, neutral_technical: 50, moderate_high: 60,
@@ -1126,7 +1089,6 @@ export default function AlinaChat() {
                   const moodMap: Record<string, number> = {
                     very_low: 5, low: 25, neutral: 50, good: 75, high: 95,
                   };
-                  // Support both original field names AND Claude free-form field names
                   const rawMood = v.mood ?? v.emotionalState ?? v.emotional_state ?? "neutral";
                   const moodLabel = String(rawMood).replace(/_/g, " ");
                   return {
@@ -1142,18 +1104,15 @@ export default function AlinaChat() {
           }
         />
 
-        {/* Content Area */}
         <div className="flex-1 overflow-hidden relative">
           {mode === "chat" ? (
             <div className="h-full flex flex-col">
-              {/* Messages */}
-              <div 
+              <div
                 ref={chatContainerRef}
                 className="flex-1 overflow-y-auto custom-scrollbar p-4 space-y-3"
               >
                 {messages.map((m, idx) => {
                   const isUser = m.role === "user";
-                  const isLast = idx === messages.length - 1;
 
                   return (
                     <div
@@ -1162,7 +1121,6 @@ export default function AlinaChat() {
                       style={{ animationDelay: `${idx * 50}ms` }}
                     >
                       <div className={`flex gap-2 max-w-[85%] lg:max-w-[75%] ${isUser ? "flex-row-reverse" : ""}`}>
-                        {/* Avatar */}
                         <div className="flex-shrink-0">
                           {isUser ? (
                             <div className="w-8 h-8 rounded-full bg-slate-700 flex items-center justify-center">
@@ -1175,7 +1133,6 @@ export default function AlinaChat() {
                           )}
                         </div>
 
-                        {/* Message Content */}
                         <div className={`flex flex-col ${isUser ? "items-end" : "items-start"}`}>
                           <div
                             className={`px-5 py-3.5 rounded-2xl ${
@@ -1199,7 +1156,6 @@ export default function AlinaChat() {
                             )}
                           </div>
 
-                          {/* Timestamp */}
                           <span className="text-[10px] text-slate-500 mt-1.5 px-1">
                             {new Date(m.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
                           </span>
@@ -1211,7 +1167,6 @@ export default function AlinaChat() {
                 <div ref={messagesEndRef} />
               </div>
 
-              {/* Scroll to Bottom Button */}
               {showScrollButton && (
                 <button
                   onClick={scrollToBottom}
@@ -1223,10 +1178,8 @@ export default function AlinaChat() {
                 </button>
               )}
 
-              {/* Input Area */}
               <div className="p-4 bg-gradient-to-t from-[#020617] via-[#020617] to-transparent">
                 <form onSubmit={handleSubmit} className="max-w-4xl mx-auto">
-                  {/* Attached file chip */}
                   {attachedFile && (
                     <div className="flex items-center gap-2 mb-2 px-2">
                       <div className="flex items-center gap-2 px-3 py-1.5 bg-cyan-500/10 border border-cyan-500/30 rounded-lg text-xs text-cyan-300">
@@ -1287,7 +1240,7 @@ export default function AlinaChat() {
 
                       <button
                         type="submit"
-                        disabled={isSending || !input.trim()}
+                        disabled={isSending || (!input.trim() && !attachedFile)}
                         className="p-2 bg-cyan-500 hover:bg-cyan-400 disabled:bg-slate-700 disabled:text-slate-500 text-slate-900 rounded-xl transition-all duration-200 shadow-lg shadow-cyan-500/20 disabled:shadow-none"
                       >
                         {isSending ? (
@@ -1303,17 +1256,12 @@ export default function AlinaChat() {
                       </button>
                     </div>
                   </div>
-
-
                 </form>
               </div>
             </div>
           ) : (
-            // Index Mode — unified memory + profile feed
             <div className="h-full overflow-y-auto custom-scrollbar">
               <div className="max-w-2xl mx-auto p-6 space-y-4">
-
-                {/* User Profile */}
                 {userProfile && (
                   <div className="glass-panel rounded-2xl p-5 gradient-border">
                     <div className="flex items-center justify-between mb-3">
@@ -1328,7 +1276,6 @@ export default function AlinaChat() {
                   </div>
                 )}
 
-                {/* Memory Feed */}
                 {memories.length > 0 ? (
                   <>
                     <p className="text-[10px] font-semibold uppercase tracking-widest text-slate-500 px-1">
@@ -1402,9 +1349,6 @@ export default function AlinaChat() {
   );
 }
 
-// ============================================
-// NORMALIZATION (Backward Compatible)
-// ============================================
 function normalizeLoadedSessions(raw: any): SessionV1[] {
   const arr = safeArray<any>(raw);
   const now = isoNow();
@@ -1414,7 +1358,6 @@ function normalizeLoadedSessions(raw: any): SessionV1[] {
       const messagesRaw = safeArray<any>(s?.messages);
       const messages: Message[] = messagesRaw.map((m: any): Message => {
         let content = typeof m?.content === "string" ? m.content : "";
-        // Migrate old welcome message to new short form
         if (
           m?.role !== "user" &&
           (content.includes("Neural interface initialized") || content.includes("I'm Alina, your AI companion"))
