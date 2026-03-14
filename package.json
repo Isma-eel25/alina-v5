@@ -14,7 +14,6 @@
     "@prisma/client": "^5.15.0",
     "@supabase/ssr": "^0.9.0",
     "@supabase/supabase-js": "^2.98.0",
-    "@vercel/postgres": "^0.10.0",
     "katex": "^0.16.33",
     "next": "16.1.6",
     "openai": "^6.17.0",
