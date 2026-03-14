@@ -2271,18 +2271,13 @@ ${internalDialogueBlock}`
         ? conversationInput
         : `Start by greeting the user as Alina in 1–2 sentences.`;
 
-// Launch-stability fallback: request a normal Anthropic response, then
-// pass the final text through the existing SSE transformer as a single delta.
-// This avoids SDK-version-specific async stream shape issues on Vercel.
-async function* singleDeltaStream(text: string) {
-  if (!text) return;
-  yield { type: "response.output_text.delta", delta: text };
-}
+// Launch-stability fallback: non-streaming JSON response.
+// The frontend already supports JSON fallback when content-type is application/json.
+// This avoids Anthropic SDK stream-shape/version mismatches on Vercel.
 
 const response = await (anthropic as any).messages.create({
   model: modelToUse,
   max_tokens: 2048,
-  // Tighten sampling for launch-day consistency (does not change personality rules)
   temperature: 0.55,
   system: systemContent,
   messages: Array.isArray(openaiInput)
@@ -2297,20 +2292,22 @@ const responseText = Array.isArray((response as any)?.content)
       .join("")
   : "";
 
-const stream = createStreamingTextTransformer({
-  upstream: singleDeltaStream(responseText),
-  replaceMarkerWith: topRef ?? "UNKNOWN",
-});
+const finalText = topRef
+  ? ensureSingleFinalCitation(responseText, topRef)
+  : stripAnyMemoryReferenceText(responseText);
 
     const headers: Record<string, string> = {
-      "Content-Type": "text/event-stream; charset=utf-8",
-      "Cache-Control": "no-cache, no-transform",
-      Connection: "keep-alive",
-      "X-Accel-Buffering": "no",
+      "Content-Type": "application/json; charset=utf-8",
+      "Cache-Control": "no-store",
     };
     if (setCookieHeader) headers["Set-Cookie"] = setCookieHeader;
 
-    return new Response(stream, { headers });
+    return new Response(
+      JSON.stringify({
+        content: finalText || "Alina had nothing to say just then. Try again.",
+      }),
+      { headers },
+    );
   } catch (error) {
     console.error("Brain route error:", error);
     return new Response("Brain route error", { status: 500 });
