@@ -1,11 +1,11 @@
 "use client";
 
-import { useEffect } from "react";
+import { Suspense, useEffect } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 
 const WAITLIST_PAYPAL_LINK = "https://www.paypal.com/ncp/payment/GFMJ82BZCU5Z2";
 
-export default function HomePage() {
+function HomePageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
 
@@ -71,7 +71,9 @@ export default function HomePage() {
               <p className="text-sm font-medium uppercase tracking-[0.2em] text-purple-200/80">
                 Monthly Access
               </p>
-              <h2 className="mt-2 text-3xl font-bold text-white">$8<span className="ml-1 text-base font-medium text-slate-300">/ month</span></h2>
+              <h2 className="mt-2 text-3xl font-bold text-white">
+                $8<span className="ml-1 text-base font-medium text-slate-300">/ month</span>
+              </h2>
               <p className="mt-2 text-slate-200">
                 Early supporter pricing for waitlist users.
               </p>
@@ -99,5 +101,21 @@ export default function HomePage() {
         </p>
       </section>
     </main>
+  );
+}
+
+export default function HomePage() {
+  return (
+    <Suspense
+      fallback={
+        <main className="min-h-screen bg-slate-950 text-white">
+          <section className="mx-auto flex min-h-screen w-full max-w-6xl items-center justify-center px-6 py-12">
+            <div className="text-sm text-slate-400">Loading Alina...</div>
+          </section>
+        </main>
+      }
+    >
+      <HomePageContent />
+    </Suspense>
   );
 }
