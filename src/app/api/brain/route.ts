@@ -2271,22 +2271,17 @@ ${internalDialogueBlock}`
         ? conversationInput
         : `Start by greeting the user as Alina in 1–2 sentences.`;
 
-// Claude Sonnet streaming via Anthropic SDK
-async function* mapAnthropicStreamToDelta(up: AsyncIterable<any>) {
-  for await (const event of up as any) {
-    // We only care about text deltas from content blocks
-    if (event.type === "content_block_delta" && event.delta?.type === "text_delta") {
-      const chunk = event.delta.text ?? "";
-      if (!chunk) continue;
-      yield { type: "response.output_text.delta", delta: chunk };
-    }
-  }
+// Launch-stability fallback: request a normal Anthropic response, then
+// pass the final text through the existing SSE transformer as a single delta.
+// This avoids SDK-version-specific async stream shape issues on Vercel.
+async function* singleDeltaStream(text: string) {
+  if (!text) return;
+  yield { type: "response.output_text.delta", delta: text };
 }
 
-const responseStreamRaw = await (anthropic as any).messages.create({
+const response = await (anthropic as any).messages.create({
   model: modelToUse,
   max_tokens: 2048,
-  stream: true,
   // Tighten sampling for launch-day consistency (does not change personality rules)
   temperature: 0.55,
   system: systemContent,
@@ -2295,12 +2290,17 @@ const responseStreamRaw = await (anthropic as any).messages.create({
     : [{ role: "user", content: String(openaiInput) }],
 } as any);
 
-const responseStream = mapAnthropicStreamToDelta(responseStreamRaw as AsyncIterable<any>);
+const responseText = Array.isArray((response as any)?.content)
+  ? (response as any).content
+      .filter((block: any) => block?.type === "text" && typeof block?.text === "string")
+      .map((block: any) => block.text)
+      .join("")
+  : "";
 
-    const stream = createStreamingTextTransformer({
-      upstream: responseStream as any,
-      replaceMarkerWith: topRef ?? "UNKNOWN",
-    });
+const stream = createStreamingTextTransformer({
+  upstream: singleDeltaStream(responseText),
+  replaceMarkerWith: topRef ?? "UNKNOWN",
+});
 
     const headers: Record<string, string> = {
       "Content-Type": "text/event-stream; charset=utf-8",
