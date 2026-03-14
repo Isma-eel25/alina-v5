@@ -1430,14 +1430,16 @@ function ensureSingleFinalCitation(text: string, iso: string): string {
 function createStreamingTextTransformer(options: {
   upstream: AsyncIterable<any>;
   replaceMarkerWith: string;
+  onComplete?: (meta: {
+    responseLength: number;
+    citedMemory: boolean;
+  }) => void;
+  onError?: (error: unknown) => void;
 }) {
   const encoder = new TextEncoder();
   const marker = MEMORY_REF_MARKER;
   const replacement = options.replaceMarkerWith || "UNKNOWN";
 
-  // ✅ True streaming:
-  // Keep only a small tail so we can safely detect markers across chunk boundaries,
-  // but emit as soon as we have anything beyond that tail.
   const longestTokenLen = Math.max(
     marker.length,
     MEMORY_USED_TRUE.length,
@@ -1446,8 +1448,6 @@ function createStreamingTextTransformer(options: {
   const carryKeep = Math.max(256, longestTokenLen - 1);
 
   const toSSE = (payload: string) => {
-    // SSE requires each line to be prefixed with "data:"
-    // and frames separated by a blank line.
     const lines = payload.split(/\r?\n/);
     const framed =
       lines.map((ln) => `data: ${ln}`).join("\n") + "\n\n";
@@ -1457,22 +1457,23 @@ function createStreamingTextTransformer(options: {
   return new ReadableStream<Uint8Array>({
     async start(controller) {
       let pending = "";
+      let finalResponse = "";
       let memoryUsedDeclared: boolean | null = null;
       let sentFirst = false;
 
-      // Send an initial comment to encourage proxies to flush immediately.
       controller.enqueue(encoder.encode(":ok\n\n"));
 
       try {
         for await (const event of options.upstream as any) {
-          if (event.type !== "response.output_text.delta") continue;
+          if (event?.type !== "content_block_delta") continue;
+          if (event?.delta?.type !== "text_delta") continue;
 
-          const delta: string = event.delta ?? "";
+          const delta: string = event?.delta?.text ?? "";
           if (!delta) continue;
 
           pending += delta;
+          finalResponse += delta;
 
-          // Strip any model-declared memory used marker as soon as it appears
           if (pending.includes(MEMORY_USED_TRUE)) {
             memoryUsedDeclared = true;
             pending = pending.split(MEMORY_USED_TRUE).join("");
@@ -1482,17 +1483,12 @@ function createStreamingTextTransformer(options: {
             pending = pending.split(MEMORY_USED_FALSE).join("");
           }
 
-          // Replace marker with real ISO (may appear mid-stream)
           if (pending.includes(marker)) {
             pending = pending.split(marker).join(replacement);
           }
 
-          // Emit everything except a small tail (carryKeep) so we don't break markers
           if (pending.length > carryKeep) {
-            const emit = pending.slice(
-              0,
-              pending.length - carryKeep,
-            );
+            const emit = pending.slice(0, pending.length - carryKeep);
             pending = pending.slice(pending.length - carryKeep);
 
             if (emit.length > 0) {
@@ -1502,7 +1498,6 @@ function createStreamingTextTransformer(options: {
           }
         }
 
-        // Final cleanup on whatever is left in pending
         if (pending.includes(MEMORY_USED_TRUE)) {
           memoryUsedDeclared = true;
           pending = pending.split(MEMORY_USED_TRUE).join("");
@@ -1515,7 +1510,6 @@ function createStreamingTextTransformer(options: {
           pending = pending.split(marker).join(replacement);
         }
 
-        // If model failed to declare, treat as "no memory used"
         const requireCitation = memoryUsedDeclared === true;
 
         if (!requireCitation) {
@@ -1528,13 +1522,33 @@ function createStreamingTextTransformer(options: {
         if (pending.length > 0) {
           controller.enqueue(toSSE(pending));
         } else if (!sentFirst) {
-          // Ensure client gets something even if model produced empty output (rare)
           controller.enqueue(toSSE(""));
         }
 
+        const finalClean =
+          requireCitation
+            ? ensureSingleFinalCitation(finalResponse, replacement)
+            : stripAnyMemoryReferenceText(finalResponse).replace(/\s+$/g, "");
+
+        options.onComplete?.({
+          responseLength: finalClean.length,
+          citedMemory: requireCitation,
+        });
+
         controller.close();
       } catch (error) {
+        options.onError?.(error);
         console.error("Brain LLM error:", error);
+
+        if (!sentFirst) {
+          const fallback = stripAnyMemoryReferenceText(
+            "Something wobbled on my side just now. Give me one more shot.",
+          );
+          controller.enqueue(toSSE(fallback));
+          controller.close();
+          return;
+        }
+
         controller.error(error);
       }
     },
@@ -2346,31 +2360,29 @@ ${internalDialogueBlock}`
 
     const modelToUse = chooseModel(lastUserMessage?.content ?? null);
 
-    const openaiInput: any =
+    const anthropicInput: any =
       conversationInput.length > 0
         ? conversationInput
-        : `Start by greeting the user as Alina in 1–2 sentences.`;
-
-// Launch-stability fallback: non-streaming JSON response.
-// The frontend already supports JSON fallback when content-type is application/json.
-// This avoids Anthropic SDK stream-shape/version mismatches on Vercel.
+        : [{ role: "user", content: "Start by greeting the user as Alina in 1–2 sentences." }];
 
     brainLog(requestId, "anthropic_request_started", {
       userId: canonicalUserId,
       model: modelToUse,
-      inputMessages: Array.isArray(openaiInput) ? openaiInput.length : 1,
+      inputMessages: Array.isArray(anthropicInput) ? anthropicInput.length : 1,
+      mode: "stream",
     });
 
-    let response: any;
+    let stream: any;
     try {
-      response = await (anthropic as any).messages.create({
+      stream = await (anthropic as any).messages.create({
         model: modelToUse,
         max_tokens: 2048,
         temperature: 0.55,
         system: systemContent,
-        messages: Array.isArray(openaiInput)
-          ? openaiInput
-          : [{ role: "user", content: String(openaiInput) }],
+        stream: true,
+        messages: Array.isArray(anthropicInput)
+          ? anthropicInput
+          : [{ role: "user", content: String(anthropicInput) }],
       } as any);
     } catch (error) {
       brainLog(requestId, "anthropic_request_failed", {
@@ -2396,33 +2408,46 @@ ${internalDialogueBlock}`
     brainLog(requestId, "anthropic_request_succeeded", {
       userId: canonicalUserId,
       model: modelToUse,
-      outputBlocks: Array.isArray((response as any)?.content)
-        ? (response as any).content.length
-        : 0,
+      streamOpened: true,
     });
 
-    const responseText = Array.isArray((response as any)?.content)
-      ? (response as any).content
-          .filter((block: any) => block?.type === "text" && typeof block?.text === "string")
-          .map((block: any) => block.text)
-          .join("")
-      : "";
-
-    const finalText = topRef
-      ? ensureSingleFinalCitation(responseText, topRef)
-      : stripAnyMemoryReferenceText(responseText);
-
-    const finalContent =
-      finalText || "Alina had nothing to say just then. Try again.";
-
-    brainLog(requestId, "response_sent", {
-      userId: canonicalUserId,
-      responseLength: finalContent.length,
-      citedMemory: !!topRef,
+    const streamBody = createStreamingTextTransformer({
+      upstream: stream,
+      replaceMarkerWith: topRef ?? "UNKNOWN",
+      onComplete: ({ responseLength, citedMemory }) => {
+        brainLog(requestId, "response_sent", {
+          userId: canonicalUserId,
+          responseLength,
+          citedMemory,
+          mode: "stream",
+        });
+      },
+      onError: (error) => {
+        brainLog(requestId, "stream_failed", {
+          userId: canonicalUserId,
+          error:
+            error instanceof Error
+              ? error.message
+              : typeof error === "string"
+                ? error
+                : "unknown_error",
+        });
+      },
     });
 
-    return createBrainJsonResponse(finalContent, {
-      setCookieHeader,
+    const headers: Record<string, string> = {
+      "Content-Type": "text/event-stream; charset=utf-8",
+      "Cache-Control": "no-cache, no-transform",
+      Connection: "keep-alive",
+      "X-Accel-Buffering": "no",
+    };
+    if (setCookieHeader) {
+      headers["Set-Cookie"] = setCookieHeader;
+    }
+
+    return new Response(streamBody, {
+      status: 200,
+      headers,
     });
   } catch (error) {
     brainLog(requestId, "request_failed", {
