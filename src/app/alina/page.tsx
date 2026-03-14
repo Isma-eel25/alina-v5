@@ -10,16 +10,14 @@ export default async function AlinaPage() {
 
   const supabase = createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    // Keeping your existing env var name as-is to avoid touching unrelated config.
-    process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY!,
+    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
     {
       cookies: {
         getAll() {
           return cookieStore.getAll();
         },
-        // Read-only here — we don't need to refresh tokens from this component.
         setAll() {
-          // intentionally empty
+          // intentionally empty (read-only in this component)
         },
       },
     }
