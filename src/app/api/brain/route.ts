@@ -1494,66 +1494,9 @@ function createStreamingTextTransformer(options: {
   });
 }
 
-// ---- Observability -----------------------------------------------------------
-
-type BrainLogLevel = "info" | "error";
-
-function makeBrainRequestId(): string {
-  if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
-    return crypto.randomUUID().slice(0, 8);
-  }
-  return Math.random().toString(36).slice(2, 10);
-}
-
-function toSafeUserLogId(value: string | null | undefined): string | null {
-  const v = (value ?? "").trim();
-  if (!v) return null;
-  if (v.length <= 8) return v;
-  return `${v.slice(0, 4)}…${v.slice(-4)}`;
-}
-
-function errorToLogDetails(error: unknown) {
-  if (error instanceof Error) {
-    return {
-      name: error.name,
-      message: error.message,
-      stack: error.stack,
-    };
-  }
-
-  return {
-    message: typeof error === "string" ? error : JSON.stringify(error),
-  };
-}
-
-function logBrainEvent(
-  level: BrainLogLevel,
-  requestId: string,
-  phase: string,
-  data: Record<string, unknown> = {},
-) {
-  const payload = {
-    scope: "alina_brain",
-    requestId,
-    phase,
-    timestamp: new Date().toISOString(),
-    ...data,
-  };
-
-  if (level === "error") {
-    console.error("[alina_brain]", payload);
-    return;
-  }
-
-  console.log("[alina_brain]", payload);
-}
-
 // ---- Main handler -----------------------------------------------------------
 
 export async function POST(req: NextRequest) {
-  const requestId = makeBrainRequestId();
-  const requestStartedAt = Date.now();
-
   try {
     const json = (await req.json()) as BrainRequestBody;
 
@@ -1566,22 +1509,10 @@ export async function POST(req: NextRequest) {
       userId: rawUserId,
     } = json;
 
-    const { userId, setCookieHeader } = getStableUserId(
+    const { userId: provisionalUserId, setCookieHeader } = getStableUserId(
       req,
       rawUserId,
     );
-
-    logBrainEvent("info", requestId, "request_received", {
-      method: req.method,
-      path: req.nextUrl.pathname,
-      userId: toSafeUserLogId(userId),
-      messageCount: Array.isArray(rawMessages) ? rawMessages.length : 0,
-      hasVitalsSummary: Boolean(vitalsSummary),
-      hasVitalsSnapshot: Boolean(vitalsSnapshot),
-      hasReflectionSummary: Boolean(reflectionSummary),
-      hasSystemOverride: Boolean(systemOverride),
-      cookieWillBeSet: Boolean(setCookieHeader),
-    });
 
     // ---- Auth + optional Pro gate (kept isolated; does not touch AI core or streaming) ----
     const supabase = await createSupabaseServerClient();
@@ -1591,12 +1522,6 @@ export async function POST(req: NextRequest) {
     } = await supabase.auth.getUser();
 
     if (authError || !authUser) {
-      logBrainEvent("error", requestId, "auth_failed", {
-        userId: toSafeUserLogId(userId),
-        authError: authError ? errorToLogDetails(authError) : null,
-        durationMs: Date.now() - requestStartedAt,
-      });
-
       const headers: Record<string, string> = {
         "Content-Type": "application/json; charset=utf-8",
       };
@@ -1607,11 +1532,9 @@ export async function POST(req: NextRequest) {
       });
     }
 
-    logBrainEvent("info", requestId, "auth_ok", {
-      userId: toSafeUserLogId(userId),
-      authUserId: toSafeUserLogId(authUser.id),
-      hasEmail: Boolean(authUser.email),
-    });
+    void provisionalUserId;
+
+    const canonicalUserId = authUser.id;
 
     const gateMode = (process.env.ALINA_BRAIN_GATE_MODE ?? "off").toLowerCase();
     if (gateMode === "pro") {
@@ -1627,14 +1550,6 @@ export async function POST(req: NextRequest) {
       const isPro = plan === "pro" || isSubscribed;
 
       if (!isAdmin && !isPro) {
-        logBrainEvent("info", requestId, "access_denied", {
-          userId: toSafeUserLogId(userId),
-          gateMode,
-          isAdmin,
-          isPro,
-          durationMs: Date.now() - requestStartedAt,
-        });
-
         const headers: Record<string, string> = {
           "Content-Type": "application/json; charset=utf-8",
         };
@@ -1647,28 +1562,9 @@ export async function POST(req: NextRequest) {
     }
 
     // ---- Subscription usage gate (10 free messages/month for non-owner, 100/day for pro) ----
-    const usage = await applyUsageLimits(userId);
-
-    logBrainEvent("info", requestId, "usage_check_ok", {
-      userId: toSafeUserLogId(userId),
-      plan: usage.plan,
-      period: usage.period,
-      limit: usage.limit,
-      used: usage.used,
-      remaining: usage.remaining,
-      quotaExceeded: usage.quotaExceeded,
-    });
+    const usage = await applyUsageLimits(canonicalUserId);
 
     if (usage.quotaExceeded) {
-      logBrainEvent("info", requestId, "usage_limit_hit", {
-        userId: toSafeUserLogId(userId),
-        plan: usage.plan,
-        period: usage.period,
-        limit: usage.limit,
-        used: usage.used,
-        durationMs: Date.now() - requestStartedAt,
-      });
-
       const body = JSON.stringify({
         type: "quota_exceeded",
         content:
@@ -1707,40 +1603,30 @@ export async function POST(req: NextRequest) {
 
     // ✅ Clinical Memory Capture Engine v1 (hidden) + Noise Gate v1
     await captureClinicalEventMemory({
-      userId,
+      userId: canonicalUserId,
       userText: lastUserMessage?.content ?? null,
     });
 
     // ✅ Clinical State Summary Injection (hidden)
-    const clinicalStateBlock = await buildClinicalStateBlock(userId);
+    const clinicalStateBlock = await buildClinicalStateBlock(canonicalUserId);
 
     const { block: precisionRecallBlock, topRef } =
       await buildPrecisionMemoryRecallBlock({
-        userId,
+        userId: canonicalUserId,
         queryText: lastUserMessage?.content ?? null,
         targetTimeIso: (lastUserMessage as any)?.createdAt ?? null,
       });
 
     const longTermBlock = await buildLongTermMemoryBlock(
-      userId,
+      canonicalUserId,
       lastUserMessage?.content ?? null,
     );
-
-    logBrainEvent("info", requestId, "memory_loaded", {
-      userId: toSafeUserLogId(userId),
-      shortTermMessages: shortTerm.length,
-      hasClinicalStateBlock: Boolean(clinicalStateBlock),
-      hasPrecisionRecallBlock: Boolean(precisionRecallBlock),
-      hasLongTermBlock: Boolean(longTermBlock),
-      hasTopRef: Boolean(topRef),
-      lastUserMessageLength: (lastUserMessage?.content ?? "").length,
-    });
 
     // 5.5) Persona Engine (User Modeling) — derived, non-sensitive snapshot
     let personaBlock = "";
     let personaSnapshotForFeedback: any = null;
     try {
-      const recentForPersona = await getRecentMemoriesCompat(24, userId);
+      const recentForPersona = await getRecentMemoriesCompat(24, canonicalUserId);
       const personaSnapshot = buildPersonaSnapshot({
         recentUserText: (lastUserMessage?.content ?? "").toString(),
         reflectionSummary: reflectionSummary ?? null,
@@ -1781,7 +1667,7 @@ let personaProfileBlock = "";
 try {
   // Simple, safe routing from current context → PersonaInputs
   const textLower = (lastUserMessage?.content ?? "").toString().toLowerCase();
-  const isFirstSession = !userId;
+  const isFirstSession = false;
 
   let convoMode: ConvoMode = "mixed";
   if (
@@ -1964,7 +1850,7 @@ Tone hints:
     let executionReflectionSignal: ExecutionReflectionSignal | null = null;
     let feedbackReflectionSignalForFeedback: any = null;
     try {
-      const latestReflection = await LTM.getLatestReflectionEntry(userId);
+      const latestReflection = await LTM.getLatestReflectionEntry(canonicalUserId);
       if (latestReflection) {
         const diary = latestReflection.summary ?? "";
         const reflectionVitalsSnapshot = latestReflection.extra?.vitals ?? null;
@@ -2022,7 +1908,7 @@ Tone hints:
     try {
       const vitalsForExecution: VitalsSnapshot =
         (vitalsSnapshot as VitalsSnapshot | null) ??
-        createEmptyVitalsSnapshot(userId);
+        createEmptyVitalsSnapshot(canonicalUserId);
 
       const shortTermPattern: ShortTermPattern | null = shortTerm
         ? { window: shortTerm }
@@ -2162,9 +2048,9 @@ try {
     statisticalSelfStudyState,
     {
       timestamp: new Date().toISOString(),
-      sessionId: userId ?? "anonymous",
+      sessionId: canonicalUserId,
       turnIndex: rawMessages.length,
-      userId: userId ?? undefined,
+      userId: canonicalUserId,
       vitals: {
         mood: moodLabel,
         stress: stressLabel,
@@ -2182,8 +2068,8 @@ try {
   );
 
   creationEngineV10ScaffoldInput = buildCreationEngineV10ScaffoldInput({
-    userId: userId ?? undefined,
-    sessionId: userId ?? "anonymous",
+    userId: canonicalUserId,
+    sessionId: canonicalUserId,
     timestamp: new Date().toISOString(),
     clinicalVitals: {
       mood: moodLabel,
@@ -2393,16 +2279,7 @@ ${internalDialogueBlock}`
 // The frontend already supports JSON fallback when content-type is application/json.
 // This avoids Anthropic SDK stream-shape/version mismatches on Vercel.
 
-logBrainEvent("info", requestId, "anthropic_request_started", {
-  userId: toSafeUserLogId(userId),
-  model: modelToUse,
-  inputMessages: Array.isArray(openaiInput) ? openaiInput.length : 1,
-  systemLength: systemContent.length,
-});
-
-let response: any;
-try {
-  response = await (anthropic as any).messages.create({
+const response = await (anthropic as any).messages.create({
   model: modelToUse,
   max_tokens: 2048,
   temperature: 0.55,
@@ -2411,25 +2288,6 @@ try {
     ? openaiInput
     : [{ role: "user", content: String(openaiInput) }],
 } as any);
-
-  logBrainEvent("info", requestId, "anthropic_request_succeeded", {
-    userId: toSafeUserLogId(userId),
-    model: modelToUse,
-    durationMs: Date.now() - requestStartedAt,
-    stopReason: (response as any)?.stop_reason ?? null,
-    outputBlocks: Array.isArray((response as any)?.content)
-      ? (response as any).content.length
-      : 0,
-  });
-} catch (anthropicError) {
-  logBrainEvent("error", requestId, "anthropic_request_failed", {
-    userId: toSafeUserLogId(userId),
-    model: modelToUse,
-    durationMs: Date.now() - requestStartedAt,
-    error: errorToLogDetails(anthropicError),
-  });
-  throw anthropicError;
-}
 
 const responseText = Array.isArray((response as any)?.content)
   ? (response as any).content
@@ -2448,23 +2306,14 @@ const finalText = topRef
     };
     if (setCookieHeader) headers["Set-Cookie"] = setCookieHeader;
 
-    const responsePayload = {
-      content: finalText || "Alina had nothing to say just then. Try again.",
-    };
-
-    logBrainEvent("info", requestId, "response_sent", {
-      userId: toSafeUserLogId(userId),
-      durationMs: Date.now() - requestStartedAt,
-      responseLength: responsePayload.content.length,
-      citedMemory: Boolean(topRef),
-    });
-
-    return new Response(JSON.stringify(responsePayload), { headers });
+    return new Response(
+      JSON.stringify({
+        content: finalText || "Alina had nothing to say just then. Try again.",
+      }),
+      { headers },
+    );
   } catch (error) {
-    logBrainEvent("error", requestId, "request_failed", {
-      durationMs: Date.now() - requestStartedAt,
-      error: errorToLogDetails(error),
-    });
+    console.error("Brain route error:", error);
     return new Response("Brain route error", { status: 500 });
   }
 }
