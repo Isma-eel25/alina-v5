@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { DiaryVitalsClient } from "@/components/vitals/DiaryVitalsClient";
 
 type WaitlistEntry = {
   id: string;
@@ -33,13 +34,18 @@ export default function WaitlistDashboard() {
 
   return (
     <div className="min-h-screen bg-slate-950 text-white p-6">
+      {/* Header */}
       <h1 className="text-3xl font-bold mb-4">Alina Waitlist</h1>
 
+      {/* 🔹 Alina vitals snapshot (state + next step) */}
+      <div className="mb-6 max-w-3xl">
+        <DiaryVitalsClient />
+      </div>
+
+      {/* Waitlist content */}
       {loading && <p>Loading...</p>}
 
-      {!loading && entries.length === 0 && (
-        <p>No one has signed up yet.</p>
-      )}
+      {!loading && entries.length === 0 && <p>No one has signed up yet.</p>}
 
       {!loading && entries.length > 0 && (
         <div className="overflow-x-auto">
