@@ -64,6 +64,22 @@ const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
+
+function brainLog(
+  requestId: string,
+  phase: string,
+  data: Record<string, unknown> = {},
+) {
+  console.log("[alina_brain]", {
+    scope: "alina_brain",
+    requestId,
+    phase,
+    timestamp: new Date().toISOString(),
+    ...data,
+  });
+}
+
+
 type ChatRole = "user" | "assistant" | "system";
 
 type ClinicalMood = LTM.ClinicalMood;
@@ -1497,7 +1513,17 @@ function createStreamingTextTransformer(options: {
 // ---- Main handler -----------------------------------------------------------
 
 export async function POST(req: NextRequest) {
+  const requestId =
+    typeof crypto !== "undefined" && "randomUUID" in crypto
+      ? crypto.randomUUID().slice(0, 8)
+      : `${Date.now()}`.slice(-8);
+
   try {
+    brainLog(requestId, "request_received", {
+      method: "POST",
+      path: "/api/brain",
+    });
+
     const json = (await req.json()) as BrainRequestBody;
 
     const {
@@ -1536,6 +1562,11 @@ export async function POST(req: NextRequest) {
 
     const canonicalUserId = authUser.id;
 
+    brainLog(requestId, "auth_ok", {
+      userId: canonicalUserId,
+      hasEmail: !!authUser.email,
+    });
+
     const gateMode = (process.env.ALINA_BRAIN_GATE_MODE ?? "off").toLowerCase();
     if (gateMode === "pro") {
       const adminEmails = (process.env.ALINA_ADMIN_EMAILS ?? "")
@@ -1564,6 +1595,15 @@ export async function POST(req: NextRequest) {
     // ---- Subscription usage gate (10 free messages/month for non-owner, 100/day for pro) ----
     const usage = await applyUsageLimits(canonicalUserId);
 
+    brainLog(requestId, "usage_check_ok", {
+      userId: canonicalUserId,
+      plan: usage.plan,
+      period: usage.period,
+      used: usage.used,
+      remaining: usage.remaining,
+      quotaExceeded: usage.quotaExceeded,
+    });
+
     if (usage.quotaExceeded) {
       const body = JSON.stringify({
         type: "quota_exceeded",
@@ -1591,6 +1631,11 @@ export async function POST(req: NextRequest) {
 
     const chatMessages = toChatMessages(rawMessages);
     const shortTerm = buildShortTermMemory(chatMessages);
+
+    brainLog(requestId, "memory_loaded", {
+      userId: canonicalUserId,
+      shortTermMessages: shortTerm.length,
+    });
 
     const lastUserMessage =
       [...shortTerm].reverse().find((m) => m.role === "user") ?? null;
@@ -2279,6 +2324,12 @@ ${internalDialogueBlock}`
 // The frontend already supports JSON fallback when content-type is application/json.
 // This avoids Anthropic SDK stream-shape/version mismatches on Vercel.
 
+brainLog(requestId, "anthropic_request_started", {
+  userId: canonicalUserId,
+  model: modelToUse,
+  inputMessages: Array.isArray(openaiInput) ? openaiInput.length : 1,
+});
+
 const response = await (anthropic as any).messages.create({
   model: modelToUse,
   max_tokens: 2048,
@@ -2288,6 +2339,14 @@ const response = await (anthropic as any).messages.create({
     ? openaiInput
     : [{ role: "user", content: String(openaiInput) }],
 } as any);
+
+brainLog(requestId, "anthropic_request_succeeded", {
+  userId: canonicalUserId,
+  model: modelToUse,
+  outputBlocks: Array.isArray((response as any)?.content)
+    ? (response as any).content.length
+    : 0,
+});
 
 const responseText = Array.isArray((response as any)?.content)
   ? (response as any).content
@@ -2305,6 +2364,12 @@ const finalText = topRef
       "Cache-Control": "no-store",
     };
     if (setCookieHeader) headers["Set-Cookie"] = setCookieHeader;
+
+    brainLog(requestId, "response_sent", {
+      userId: canonicalUserId,
+      responseLength: finalText.length,
+      citedMemory: !!topRef,
+    });
 
     return new Response(
       JSON.stringify({
