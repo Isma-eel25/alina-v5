@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import { useState, useEffect, useRef, FormEvent, useMemo, useCallback } from "react";
 import { useRouter } from "next/navigation";
@@ -11,7 +11,7 @@ import remarkGfm from "remark-gfm";
 import remarkMath from "remark-math";
 import rehypeKatex from "rehype-katex";
 import "katex/dist/katex.min.css";
-import { createClient } from "@/lib/supabase/client";
+import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 
 type Role = "user" | "alina";
 
@@ -135,7 +135,7 @@ function generateSessionTitleFromMessages(messages: Message[]): string {
   const maxLen = 40;
   let title = cleaned;
   if (title.length > maxLen) {
-    title = title.slice(0, maxLen).trimEnd() + "…";
+    title = title.slice(0, maxLen).trimEnd() + "â€¦";
   }
   return title.charAt(0).toUpperCase() + title.slice(1);
 }
@@ -289,7 +289,7 @@ const MarkdownComponents = {
   li({ children }: any) {
     return (
       <li className="flex items-start gap-2 text-slate-300">
-        <span className="text-cyan-500 mt-1.5 flex-shrink-0">•</span>
+        <span className="text-cyan-500 mt-1.5 flex-shrink-0">â€¢</span>
         <span className="leading-relaxed break-words min-w-0">{children}</span>
       </li>
     );
@@ -425,7 +425,7 @@ export default function AlinaChat() {
   const [isLoggingOut, setIsLoggingOut] = useState(false);
 
   const router = useRouter();
-  const supabase = createClient();
+  const supabase = createSupabaseBrowserClient();
 
   const sessionsRef = useRef<SessionV1[]>([]);
   const activeSessionIdRef = useRef<string>("");
@@ -473,13 +473,13 @@ export default function AlinaChat() {
   useEffect(() => { sessionsRef.current = sessions; }, [sessions]);
   useEffect(() => { activeSessionIdRef.current = activeSessionId; }, [activeSessionId]);
 
-  // ── LOAD USER + USER-SCOPED SESSIONS ──────────────────────────────────
+  // â”€â”€ LOAD USER + USER-SCOPED SESSIONS â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   useEffect(() => {
     const init = async () => {
       const { data: { user } } = await supabase.auth.getUser();
 
       if (!user) {
-        // Not logged in — redirect to login
+        // Not logged in â€” redirect to login
         router.replace("/login");
         return;
       }
@@ -524,7 +524,7 @@ export default function AlinaChat() {
     }
   }, []);
 
-  // ── PERSIST SESSIONS — scoped to user ID ──────────────────────────────
+  // â”€â”€ PERSIST SESSIONS â€” scoped to user ID â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   useEffect(() => {
     if (!currentUserId) return;
     if (sessions.length > 0) {
@@ -559,7 +559,7 @@ export default function AlinaChat() {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   };
 
-  // Internal helper — creates session without needing currentUserId from state
+  // Internal helper â€” creates session without needing currentUserId from state
   const createNewSessionForUser = useCallback((userId: string, silent?: boolean) => {
     const fresh: SessionV1 = {
       id: makeId("sess"),
@@ -621,7 +621,7 @@ export default function AlinaChat() {
     return sessionsRef.current.find((s) => s.id === id) || null;
   }, []);
 
-  // ── LOGOUT ────────────────────────────────────────────────────────────
+  // â”€â”€ LOGOUT â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   const handleLogout = useCallback(async () => {
     if (isLoggingOut) return;
     setIsLoggingOut(true);
@@ -785,7 +785,7 @@ export default function AlinaChat() {
         }),
       });
 
-      // Session expired — redirect to login
+      // Session expired â€” redirect to login
       if (res.status === 401) {
         router.replace("/login");
         return;
@@ -796,7 +796,7 @@ export default function AlinaChat() {
         updateActiveSession({
           messages: nextMsgs.map((m) =>
             m.id === aiM.id
-              ? { ...m, content: "🔒 Upgrade required to continue. Tap **Upgrade** to unlock full access.", isStreaming: false }
+              ? { ...m, content: "ðŸ”’ Upgrade required to continue. Tap **Upgrade** to unlock full access.", isStreaming: false }
               : m
           ),
         });
@@ -1024,7 +1024,7 @@ export default function AlinaChat() {
         <div className="absolute top-4 left-1/2 -translate-x-1/2 z-50 w-[min(92vw,620px)] rounded-2xl border border-yellow-400/25 bg-yellow-400/10 px-4 py-3 shadow-lg backdrop-blur">
           <div className="flex items-center justify-between gap-3">
             <div className="text-sm text-yellow-100/90">
-              🔒 You've hit the paywall. Upgrade to keep chatting with Alina.
+              ðŸ”’ You've hit the paywall. Upgrade to keep chatting with Alina.
             </div>
             <button
               type="button"
@@ -1108,7 +1108,7 @@ export default function AlinaChat() {
         }
       `}</style>
 
-      {/* ── MOBILE OVERLAY ── */}
+      {/* â”€â”€ MOBILE OVERLAY â”€â”€ */}
       {sidebarOpen && (
         <div
           className="fixed inset-0 bg-black/60 backdrop-blur-sm z-30 md:hidden"
@@ -1116,7 +1116,7 @@ export default function AlinaChat() {
         />
       )}
 
-      {/* ── SIDEBAR ── Desktop: static | Mobile: drawer */}
+      {/* â”€â”€ SIDEBAR â”€â”€ Desktop: static | Mobile: drawer */}
       <aside
         className={`
           flex flex-col border-r border-cyan-500/10 bg-[#0f172a]/95 backdrop-blur-xl
@@ -1138,7 +1138,7 @@ export default function AlinaChat() {
                 <p className="text-xs text-cyan-400/70">v5.0 Neural Interface</p>
               </div>
             </div>
-            {/* Close button — mobile only */}
+            {/* Close button â€” mobile only */}
             <button
               onClick={() => setSidebarOpen(false)}
               className="md:hidden p-1.5 rounded-lg text-slate-400 hover:text-cyan-400 hover:bg-slate-800/50 transition-colors"
@@ -1200,7 +1200,7 @@ export default function AlinaChat() {
           ))}
         </div>
 
-        {/* ── SIDEBAR FOOTER: user info + logout ── */}
+        {/* â”€â”€ SIDEBAR FOOTER: user info + logout â”€â”€ */}
         <div className="p-4 border-t border-cyan-500/10 space-y-3">
           {userEmail && (
             <div className="flex items-center gap-2 min-w-0">
@@ -1233,7 +1233,7 @@ export default function AlinaChat() {
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
                 </svg>
               )}
-              {isLoggingOut ? "Signing out…" : "Sign out"}
+              {isLoggingOut ? "Signing outâ€¦" : "Sign out"}
             </button>
           </div>
         </div>
@@ -1245,7 +1245,7 @@ export default function AlinaChat() {
           <div className="absolute bottom-0 right-1/4 w-96 h-96 bg-purple-500/5 rounded-full blur-3xl" />
         </div>
 
-        {/* ── HEADER ── */}
+        {/* â”€â”€ HEADER â”€â”€ */}
         <header className="h-14 md:h-16 border-b border-cyan-500/10 flex items-center justify-between px-3 md:px-4 bg-[#0f172a]/50 backdrop-blur-xl z-20 flex-shrink-0">
           <div className="flex items-center gap-2 md:gap-4 min-w-0">
             <button
@@ -1349,7 +1349,7 @@ export default function AlinaChat() {
         <div className="flex-1 overflow-hidden relative min-h-0">
           {mode === "chat" ? (
             <div className="h-full flex flex-col">
-              {/* ── MESSAGE LIST ── */}
+              {/* â”€â”€ MESSAGE LIST â”€â”€ */}
               <div
                 ref={chatContainerRef}
                 className="flex-1 overflow-y-auto overflow-x-hidden custom-scrollbar px-3 py-3 md:p-4 space-y-3 min-h-0"
@@ -1419,7 +1419,7 @@ export default function AlinaChat() {
                                       : "border-slate-700 text-slate-300 hover:border-cyan-500/30 hover:text-cyan-300"
                                   } disabled:cursor-not-allowed disabled:opacity-70`}
                                 >
-                                  👍 Helpful
+                                  ðŸ‘ Helpful
                                 </button>
                                 <button
                                   type="button"
@@ -1431,13 +1431,13 @@ export default function AlinaChat() {
                                       : "border-slate-700 text-slate-300 hover:border-amber-500/30 hover:text-amber-300"
                                   } disabled:cursor-not-allowed disabled:opacity-70`}
                                 >
-                                  👎 Not Helpful
+                                  ðŸ‘Ž Not Helpful
                                 </button>
                                 {feedbackDraft.isSubmitting && (
-                                  <span className="text-cyan-400">Saving…</span>
+                                  <span className="text-cyan-400">Savingâ€¦</span>
                                 )}
                                 {feedbackDraft.isSubmitted && (
-                                  <span className="text-green-400">Saved ✓</span>
+                                  <span className="text-green-400">Saved âœ“</span>
                                 )}
                               </div>
 
@@ -1485,7 +1485,7 @@ export default function AlinaChat() {
                 <div ref={messagesEndRef} />
               </div>
 
-              {/* ── SCROLL TO BOTTOM BUTTON ── */}
+              {/* â”€â”€ SCROLL TO BOTTOM BUTTON â”€â”€ */}
               {showScrollButton && (
                 <button
                   onClick={scrollToBottom}
@@ -1497,7 +1497,7 @@ export default function AlinaChat() {
                 </button>
               )}
 
-              {/* ── INPUT AREA ── */}
+              {/* â”€â”€ INPUT AREA â”€â”€ */}
               <div className="flex-shrink-0 px-3 pb-3 pt-2 md:p-4 bg-gradient-to-t from-[#020617] via-[#020617]/95 to-transparent">
                 <form onSubmit={handleSubmit} className="max-w-4xl mx-auto">
                   {attachedFile && (
@@ -1512,7 +1512,7 @@ export default function AlinaChat() {
                           onClick={() => setAttachedFile(null)}
                           className="ml-1 text-slate-400 hover:text-red-400 transition-colors flex-shrink-0"
                         >
-                          ×
+                          Ã—
                         </button>
                       </div>
                     </div>
@@ -1723,3 +1723,4 @@ function normalizeLoadedSessions(raw: any): SessionV1[] {
     })
     .sort((a, b) => (a.updatedAt > b.updatedAt ? -1 : 1));
 }
+
