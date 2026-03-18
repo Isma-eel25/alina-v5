@@ -385,6 +385,26 @@ async function addMemoryEntryCompat(payload: any) {
   return await fn(payload);
 }
 
+async function addConversationTurnCompat(payload: {
+  userId: string;
+  userMessage: string;
+  assistantMessage: string;
+  createdAtIso?: string;
+}) {
+  const fn =
+    ltmAny.addConversationTurn ??
+    ltmAny.insertConversationTurn ??
+    ltmAny.createConversationTurn;
+
+  if (typeof fn !== "function") {
+    throw new Error(
+      "longTermMemory.ts missing an addConversationTurn-like export (expected addConversationTurn/insertConversationTurn/createConversationTurn).",
+    );
+  }
+
+  return await fn(payload);
+}
+
 // ---- Stable user identity (cookie) -----------------------------------------
 
 function makeUserId(): string {
@@ -1433,7 +1453,8 @@ function createStreamingTextTransformer(options: {
   onComplete?: (meta: {
     responseLength: number;
     citedMemory: boolean;
-  }) => void;
+    finalText: string;
+  }) => Promise<void> | void;
   onError?: (error: unknown) => void;
 }) {
   const encoder = new TextEncoder();
@@ -1530,9 +1551,10 @@ function createStreamingTextTransformer(options: {
             ? ensureSingleFinalCitation(finalResponse, replacement)
             : stripAnyMemoryReferenceText(finalResponse).replace(/\s+$/g, "");
 
-        options.onComplete?.({
+        await options.onComplete?.({
           responseLength: finalClean.length,
           citedMemory: requireCitation,
+          finalText: finalClean,
         });
 
         controller.close();
@@ -1690,6 +1712,8 @@ export async function POST(req: NextRequest) {
         .reverse()
         .slice(lastUserMessage ? 1 : 0)
         .find((m) => m.role === "user") ?? null;
+
+    const latestUserMessageText = String(lastUserMessage?.content ?? "").trim();
 
     // ✅ Clinical Memory Capture Engine v1 (hidden) + Noise Gate v1
     await captureClinicalEventMemory({
@@ -2414,12 +2438,33 @@ ${internalDialogueBlock}`
     const streamBody = createStreamingTextTransformer({
       upstream: stream,
       replaceMarkerWith: topRef ?? "UNKNOWN",
-      onComplete: ({ responseLength, citedMemory }) => {
+      onComplete: async ({ responseLength, citedMemory, finalText }) => {
+        try {
+          if (latestUserMessageText && finalText.trim()) {
+            await addConversationTurnCompat({
+              userId: canonicalUserId,
+              userMessage: latestUserMessageText,
+              assistantMessage: finalText.trim(),
+            });
+          }
+        } catch (error) {
+          brainLog(requestId, "conversation_log_failed", {
+            userId: canonicalUserId,
+            error:
+              error instanceof Error
+                ? error.message
+                : typeof error === "string"
+                  ? error
+                  : "unknown_error",
+          });
+        }
+
         brainLog(requestId, "response_sent", {
           userId: canonicalUserId,
           responseLength,
           citedMemory,
           mode: "stream",
+          conversationLogged: Boolean(latestUserMessageText && finalText.trim()),
         });
       },
       onError: (error) => {

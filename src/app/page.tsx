@@ -3,8 +3,6 @@
 import { Suspense, useEffect } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 
-const WAITLIST_PAYPAL_LINK = "https://www.paypal.com/ncp/payment/GFMJ82BZCU5Z2";
-
 function HomePageContent() {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -62,42 +60,40 @@ function HomePageContent() {
             </button>
           </div>
 
-          <div className="rounded-2xl border border-purple-500/40 bg-gradient-to-b from-purple-900/30 to-slate-900/90 p-8 shadow-2xl shadow-purple-950/20">
+          <div className="rounded-2xl border border-cyan-500/40 bg-gradient-to-b from-cyan-900/20 to-slate-900/90 p-8 shadow-2xl shadow-cyan-950/20">
             <div className="mb-6">
-              <div className="mb-3 inline-flex rounded-full border border-purple-400/30 bg-purple-500/10 px-3 py-1 text-xs font-semibold uppercase tracking-[0.2em] text-purple-200">
-                Waitlist Offer
+              <div className="mb-3 inline-flex rounded-full border border-cyan-400/30 bg-cyan-500/10 px-3 py-1 text-xs font-semibold uppercase tracking-[0.2em] text-cyan-200">
+                Pro
               </div>
 
-              <p className="text-sm font-medium uppercase tracking-[0.2em] text-purple-200/80">
+              <p className="text-sm font-medium uppercase tracking-[0.2em] text-cyan-200/80">
                 Monthly Access
               </p>
               <h2 className="mt-2 text-3xl font-bold text-white">
-                $8<span className="ml-1 text-base font-medium text-slate-300">/ month</span>
+                R250<span className="ml-1 text-base font-medium text-slate-300">/ month</span>
               </h2>
               <p className="mt-2 text-slate-200">
-                Early supporter pricing for waitlist users.
+                Full access for users who want ongoing support and deeper continuity.
               </p>
             </div>
 
             <ul className="space-y-3 text-sm text-slate-200">
               <li>• Ongoing access to Alina</li>
               <li>• Built for consistency and deeper conversations</li>
-              <li>• Early pricing before public rate increases</li>
+              <li>• Waitlist pricing is still honored automatically at checkout</li>
             </ul>
 
-            <a
-              href={WAITLIST_PAYPAL_LINK}
-              target="_blank"
-              rel="noreferrer"
-              className="mt-8 flex w-full items-center justify-center rounded-xl bg-purple-600 px-5 py-3 font-semibold text-white transition hover:bg-purple-700"
+            <button
+              onClick={() => router.push("/login?next=/upgrade")}
+              className="mt-8 flex w-full items-center justify-center rounded-xl bg-cyan-500 px-5 py-3 font-semibold text-slate-950 transition hover:bg-cyan-400"
             >
-              Get Monthly Access
-            </a>
+              Unlock Full Access
+            </button>
           </div>
         </div>
 
         <p className="mx-auto mt-6 max-w-3xl text-center text-sm text-slate-500">
-          Public pricing can be added next. For now, the site opens on the real product entry page instead of the waitlist.
+          Live now on alinalabs.com. Start free, or upgrade after login with PayPal.
         </p>
       </section>
     </main>

@@ -46,6 +46,17 @@ type SessionV1 = {
   userProfile: UserProfileV1 | null;
 };
 
+type FeedbackRating = "helpful" | "not_helpful";
+
+type FeedbackDraft = {
+  rating: FeedbackRating | null;
+  comment: string;
+  isSubmitting: boolean;
+  isSubmitted: boolean;
+  error: string | null;
+  showCommentBox: boolean;
+};
+
 // ============================================
 // CONSTANTS & CONFIGURATION
 // ============================================
@@ -98,6 +109,17 @@ const makeId = (p: string) => `${p}-${Date.now()}-${Math.random().toString(16).s
 
 function safeArray<T>(v: any): T[] {
   return Array.isArray(v) ? (v as T[]) : [];
+}
+
+function getInitialFeedbackDraft(): FeedbackDraft {
+  return {
+    rating: null,
+    comment: "",
+    isSubmitting: false,
+    isSubmitted: false,
+    error: null,
+    showCommentBox: false,
+  };
 }
 
 function generateSessionTitleFromMessages(messages: Message[]): string {
@@ -392,6 +414,7 @@ export default function AlinaChat() {
   const [showScrollButton, setShowScrollButton] = useState(false);
   const [locusCollapsed, setLocusCollapsed] = useState(false);
   const [showUpgrade, setShowUpgrade] = useState(false);
+  const [feedbackByMessageId, setFeedbackByMessageId] = useState<Record<string, FeedbackDraft>>({});
 
   const router = useRouter();
 
@@ -558,6 +581,96 @@ export default function AlinaChat() {
     return sessionsRef.current.find((s) => s.id === id) || null;
   }, []);
 
+  const patchFeedbackDraft = useCallback((messageId: string, patch: Partial<FeedbackDraft>) => {
+    setFeedbackByMessageId((prev) => ({
+      ...prev,
+      [messageId]: {
+        ...(prev[messageId] ?? getInitialFeedbackDraft()),
+        ...patch,
+      },
+    }));
+  }, []);
+
+  const submitFeedback = useCallback(async (
+    messageId: string,
+    rating: FeedbackRating,
+    comment?: string,
+  ) => {
+    patchFeedbackDraft(messageId, {
+      rating,
+      isSubmitting: true,
+      error: null,
+      showCommentBox: rating === "not_helpful",
+    });
+
+    try {
+      const res = await fetch("/api/feedback", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          messageId,
+          rating,
+          comment: comment?.trim() ? comment.trim() : null,
+        }),
+      });
+
+      if (!res.ok) {
+        const data = await res.json().catch(() => null);
+        throw new Error(typeof data?.error === "string" ? data.error : `Feedback error: ${res.status}`);
+      }
+
+      patchFeedbackDraft(messageId, {
+        rating,
+        comment: comment ?? "",
+        isSubmitting: false,
+        isSubmitted: true,
+        error: null,
+        showCommentBox: false,
+      });
+    } catch (error) {
+      patchFeedbackDraft(messageId, {
+        isSubmitting: false,
+        isSubmitted: false,
+        error: error instanceof Error ? error.message : "Could not save feedback.",
+      });
+    }
+  }, [patchFeedbackDraft]);
+
+  const handleHelpfulClick = useCallback(async (messageId: string) => {
+    const draft = feedbackByMessageId[messageId] ?? getInitialFeedbackDraft();
+    if (draft.isSubmitting || draft.isSubmitted) return;
+    await submitFeedback(messageId, "helpful");
+  }, [feedbackByMessageId, submitFeedback]);
+
+  const handleNotHelpfulClick = useCallback((messageId: string) => {
+    const draft = feedbackByMessageId[messageId] ?? getInitialFeedbackDraft();
+    if (draft.isSubmitting || draft.isSubmitted) return;
+
+    patchFeedbackDraft(messageId, {
+      rating: "not_helpful",
+      showCommentBox: true,
+      error: null,
+    });
+  }, [feedbackByMessageId, patchFeedbackDraft]);
+
+  const handleFeedbackCommentChange = useCallback((messageId: string, comment: string) => {
+    patchFeedbackDraft(messageId, { comment, error: null });
+  }, [patchFeedbackDraft]);
+
+  const handleFeedbackSubmit = useCallback(async (messageId: string) => {
+    const draft = feedbackByMessageId[messageId] ?? getInitialFeedbackDraft();
+    if (draft.isSubmitting || draft.isSubmitted) return;
+    await submitFeedback(messageId, "not_helpful", draft.comment);
+  }, [feedbackByMessageId, submitFeedback]);
+
+  const handleFeedbackSkipComment = useCallback(async (messageId: string) => {
+    const draft = feedbackByMessageId[messageId] ?? getInitialFeedbackDraft();
+    if (draft.isSubmitting || draft.isSubmitted) return;
+    await submitFeedback(messageId, "not_helpful", "");
+  }, [feedbackByMessageId, submitFeedback]);
+
   const handleSubmit = async (e?: FormEvent) => {
     e?.preventDefault();
     const trimmedInput = input.trim();
@@ -589,6 +702,10 @@ export default function AlinaChat() {
 
     const nextMsgs = [...messages, userM, aiM];
     updateActiveSession({ messages: nextMsgs });
+    setFeedbackByMessageId((prev) => {
+      if (prev[aiM.id]) return prev;
+      return { ...prev, [aiM.id]: getInitialFeedbackDraft() };
+    });
 
     if (inputRef.current) {
       inputRef.current.style.height = "auto";
@@ -1113,6 +1230,8 @@ export default function AlinaChat() {
               >
                 {messages.map((m, idx) => {
                   const isUser = m.role === "user";
+                  const feedbackDraft = !isUser ? (feedbackByMessageId[m.id] ?? getInitialFeedbackDraft()) : null;
+                  const showFeedbackControls = !isUser && !m.isStreaming && m.content.trim().length > 0 && !m.content.startsWith("**Error:**");
 
                   return (
                     <div
@@ -1159,6 +1278,79 @@ export default function AlinaChat() {
                           <span className="text-[10px] text-slate-500 mt-1.5 px-1">
                             {new Date(m.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
                           </span>
+
+                          {showFeedbackControls && feedbackDraft && (
+                            <div className="mt-2 w-full max-w-xl rounded-xl border border-cyan-500/10 bg-slate-900/40 px-3 py-2">
+                              <div className="flex items-center gap-2 text-xs text-slate-400">
+                                <span className="mr-1">Was this helpful?</span>
+                                <button
+                                  type="button"
+                                  onClick={() => void handleHelpfulClick(m.id)}
+                                  disabled={feedbackDraft.isSubmitting || feedbackDraft.isSubmitted}
+                                  className={`rounded-lg border px-2 py-1 transition-colors ${
+                                    feedbackDraft.rating === "helpful"
+                                      ? "border-cyan-400/40 bg-cyan-500/10 text-cyan-300"
+                                      : "border-slate-700 text-slate-300 hover:border-cyan-500/30 hover:text-cyan-300"
+                                  } disabled:cursor-not-allowed disabled:opacity-70`}
+                                >
+                                  👍 Helpful
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => handleNotHelpfulClick(m.id)}
+                                  disabled={feedbackDraft.isSubmitting || feedbackDraft.isSubmitted}
+                                  className={`rounded-lg border px-2 py-1 transition-colors ${
+                                    feedbackDraft.rating === "not_helpful" || feedbackDraft.showCommentBox
+                                      ? "border-amber-400/40 bg-amber-500/10 text-amber-300"
+                                      : "border-slate-700 text-slate-300 hover:border-amber-500/30 hover:text-amber-300"
+                                  } disabled:cursor-not-allowed disabled:opacity-70`}
+                                >
+                                  👎 Not Helpful
+                                </button>
+                                {feedbackDraft.isSubmitting && (
+                                  <span className="text-cyan-400">Saving…</span>
+                                )}
+                                {feedbackDraft.isSubmitted && (
+                                  <span className="text-green-400">Saved</span>
+                                )}
+                              </div>
+
+                              {feedbackDraft.showCommentBox && !feedbackDraft.isSubmitted && (
+                                <div className="mt-3 space-y-2">
+                                  <textarea
+                                    value={feedbackDraft.comment}
+                                    onChange={(e) => handleFeedbackCommentChange(m.id, e.target.value)}
+                                    placeholder="Optional: what was off, missing, or unhelpful?"
+                                    rows={3}
+                                    className="w-full resize-none rounded-xl border border-slate-700 bg-slate-950/70 px-3 py-2 text-sm text-slate-200 outline-none placeholder:text-slate-500 focus:border-cyan-500/40"
+                                    disabled={feedbackDraft.isSubmitting}
+                                  />
+                                  <div className="flex items-center gap-2">
+                                    <button
+                                      type="button"
+                                      onClick={() => void handleFeedbackSubmit(m.id)}
+                                      disabled={feedbackDraft.isSubmitting}
+                                      className="rounded-lg bg-cyan-500 px-3 py-1.5 text-xs font-semibold text-slate-950 hover:bg-cyan-400 disabled:cursor-not-allowed disabled:opacity-70"
+                                    >
+                                      Send feedback
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={() => void handleFeedbackSkipComment(m.id)}
+                                      disabled={feedbackDraft.isSubmitting}
+                                      className="rounded-lg border border-slate-700 px-3 py-1.5 text-xs text-slate-300 hover:border-slate-500 disabled:cursor-not-allowed disabled:opacity-70"
+                                    >
+                                      Skip comment
+                                    </button>
+                                  </div>
+                                </div>
+                              )}
+
+                              {feedbackDraft.error && (
+                                <p className="mt-2 text-xs text-red-400">{feedbackDraft.error}</p>
+                              )}
+                            </div>
+                          )}
                         </div>
                       </div>
                     </div>

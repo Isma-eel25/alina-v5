@@ -32,6 +32,25 @@ export type LongTermMemoryEntry = {
   extra?: Record<string, any>;
 };
 
+export type ConversationTurnEntry = {
+  id: string;
+  userId: string;
+  userMessage: string;
+  assistantMessage: string;
+  createdAt: string;
+};
+
+export type FeedbackRating = "helpful" | "not_helpful";
+
+export type FeedbackEntry = {
+  id: string;
+  userId: string;
+  messageId: string;
+  rating: FeedbackRating;
+  comment?: string;
+  createdAt: string;
+};
+
 const DEFAULT_MAX_ENTRIES = 500;
 
 function safeDate(dateLike: string | Date): Date {
@@ -171,6 +190,48 @@ async function initOnce() {
   await pool.query(`
     CREATE INDEX IF NOT EXISTS long_term_memory_user_source_idx
     ON long_term_memory (user_id, source);
+  `);
+
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS conversation_turns (
+      id TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL,
+      user_message TEXT NOT NULL,
+      assistant_message TEXT NOT NULL,
+      created_at TIMESTAMPTZ NOT NULL
+    );
+  `);
+
+  await pool.query(`
+    CREATE INDEX IF NOT EXISTS conversation_turns_user_time_idx
+    ON conversation_turns (user_id, created_at DESC);
+  `);
+
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS feedback (
+      id TEXT PRIMARY KEY,
+      user_id TEXT NOT NULL,
+      message_id TEXT NOT NULL,
+      rating TEXT NOT NULL,
+      comment TEXT NULL,
+      created_at TIMESTAMPTZ NOT NULL,
+      CONSTRAINT feedback_rating_check CHECK (rating IN ('helpful', 'not_helpful'))
+    );
+  `);
+
+  await pool.query(`
+    CREATE UNIQUE INDEX IF NOT EXISTS feedback_user_message_idx
+    ON feedback (user_id, message_id);
+  `);
+
+  await pool.query(`
+    CREATE INDEX IF NOT EXISTS feedback_user_time_idx
+    ON feedback (user_id, created_at DESC);
+  `);
+
+  await pool.query(`
+    CREATE INDEX IF NOT EXISTS feedback_message_idx
+    ON feedback (message_id);
   `);
 
   didInit = true;
@@ -490,6 +551,152 @@ export async function retrievePrecisionMemories(options: {
     .filter((s) => s.relevance > 0)
     .slice(0, limit)
     .map((s) => s.entry);
+}
+
+export async function addConversationTurn(entry: {
+  userId: string;
+  userMessage: string;
+  assistantMessage: string;
+  createdAtIso?: string;
+}): Promise<ConversationTurnEntry> {
+  await initOnce();
+  if (!pool) throw new Error("DB pool not initialized");
+
+  const createdAt =
+    typeof entry.createdAtIso === "string" && entry.createdAtIso.trim().length > 0
+      ? safeDate(entry.createdAtIso).toISOString()
+      : new Date().toISOString();
+
+  const row: ConversationTurnEntry = {
+    id: generateId(),
+    userId: entry.userId,
+    userMessage: entry.userMessage,
+    assistantMessage: entry.assistantMessage,
+    createdAt,
+  };
+
+  await pool.query(
+    `
+    INSERT INTO conversation_turns
+      (id, user_id, user_message, assistant_message, created_at)
+    VALUES
+      ($1, $2, $3, $4, $5)
+  `,
+    [
+      row.id,
+      row.userId,
+      row.userMessage,
+      row.assistantMessage,
+      row.createdAt,
+    ]
+  );
+
+  return row;
+}
+
+export async function addFeedbackEntry(entry: {
+  userId: string;
+  messageId: string;
+  rating: FeedbackRating;
+  comment?: string | null;
+  createdAtIso?: string;
+}): Promise<FeedbackEntry> {
+  await initOnce();
+  if (!pool) throw new Error("DB pool not initialized");
+
+  const createdAt =
+    typeof entry.createdAtIso === "string" && entry.createdAtIso.trim().length > 0
+      ? safeDate(entry.createdAtIso).toISOString()
+      : new Date().toISOString();
+
+  const row: FeedbackEntry = {
+    id: generateId(),
+    userId: entry.userId,
+    messageId: entry.messageId,
+    rating: entry.rating,
+    comment: entry.comment?.trim() ? entry.comment.trim() : undefined,
+    createdAt,
+  };
+
+  const res = await pool.query(
+    `
+    INSERT INTO feedback
+      (id, user_id, message_id, rating, comment, created_at)
+    VALUES
+      ($1, $2, $3, $4, $5, $6)
+    ON CONFLICT (user_id, message_id)
+    DO UPDATE SET
+      rating = EXCLUDED.rating,
+      comment = EXCLUDED.comment,
+      created_at = EXCLUDED.created_at
+    RETURNING id, user_id, message_id, rating, comment, created_at
+  `,
+    [
+      row.id,
+      row.userId,
+      row.messageId,
+      row.rating,
+      row.comment ?? null,
+      row.createdAt,
+    ]
+  );
+
+  const saved = res.rows[0];
+
+  return {
+    id: saved.id,
+    userId: saved.user_id,
+    messageId: saved.message_id,
+    rating: saved.rating as FeedbackRating,
+    comment: saved.comment ?? undefined,
+    createdAt: new Date(saved.created_at).toISOString(),
+  };
+}
+
+export async function getRecentFeedback(options: {
+  userId?: string;
+  limit?: number;
+} = {}): Promise<FeedbackEntry[]> {
+  await initOnce();
+  if (!pool) throw new Error("DB pool not initialized");
+
+  const limit = Math.max(
+    1,
+    Math.min(
+      DEFAULT_MAX_ENTRIES,
+      typeof options.limit === "number" ? options.limit : 100
+    )
+  );
+
+  const res = options.userId
+    ? await pool.query(
+        `
+        SELECT id, user_id, message_id, rating, comment, created_at
+        FROM feedback
+        WHERE user_id = $1
+        ORDER BY created_at DESC
+        LIMIT $2
+      `,
+        [options.userId, limit]
+      )
+    : await pool.query(
+        `
+        SELECT id, user_id, message_id, rating, comment, created_at
+        FROM feedback
+        ORDER BY created_at DESC
+        LIMIT $1
+      `,
+        [limit]
+      );
+
+  return res.rows.map((r: any) => ({
+    id: r.id,
+    userId: r.user_id,
+    messageId: r.message_id,
+    rating: r.rating as FeedbackRating,
+    comment: r.comment ?? undefined,
+    createdAt: new Date(r.created_at).toISOString(),
+  }));
 }
 
 export async function clearAllMemories(userId?: string): Promise<void> {

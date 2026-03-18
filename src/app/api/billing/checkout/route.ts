@@ -1,19 +1,21 @@
 // src/app/api/billing/checkout/route.ts
 //
-// Step: Create a Lemon Squeezy checkout URL for the logged-in user and redirect.
+// Step: Redirect the logged-in user to the correct PayPal payment link.
 // - Keeps billing isolated from AI core.
 // - Uses Supabase session cookies (server client) to identify the user.
-// - Uses Lemon Squeezy Checkouts API to generate a one-time URL.
-// - Passes supabase_user_id + tier in checkout custom data so the webhook can unlock Pro.
+// - Chooses waitlist/public pricing based on user metadata.
+// - Works with PayPal payment links / buttons (no provider backend required here).
 //
 // Env required:
-// - LEMON_SQUEEZY_API_KEY
-// - LEMON_SQUEEZY_STORE_ID
-// - LEMON_SQUEEZY_VARIANT_ID_WAITLIST
-// - LEMON_SQUEEZY_VARIANT_ID_PUBLIC
+// - PAYPAL_PAYMENT_LINK_WAITLIST
+// - PAYPAL_PAYMENT_LINK_PUBLIC
+//
 // Optional:
-// - LEMON_SQUEEZY_TEST_MODE="true" for test mode
-// - ALINA_PUBLIC_ORIGIN="https://your-domain.com" (fallbacks to request origin)
+// - ALINA_PUBLIC_ORIGIN=\"https://alinalabs.com\"
+//
+// Important:
+// - This route only sends the user to PayPal checkout.
+// - Access unlocking should be handled by your post-payment flow.
 
 import { NextRequest } from "next/server";
 import { createSupabaseServerClient } from "@/lib/supabase/server";
@@ -38,12 +40,24 @@ function getExpectedPrice(user: any): number | null {
 }
 
 function safeReturnTo(v: string | null): string {
-  // Prevent open-redirects. Only allow internal paths.
+  // Prevent open redirects. Only allow internal paths.
   if (!v) return "/alina";
   try {
     if (v.startsWith("/") && !v.startsWith("//")) return v;
   } catch {}
   return "/alina";
+}
+
+function withQuery(url: string, params: Record<string, string>): string {
+  try {
+    const u = new URL(url);
+    for (const [key, value] of Object.entries(params)) {
+      if (value) u.searchParams.set(key, value);
+    }
+    return u.toString();
+  } catch {
+    return url;
+  }
 }
 
 export async function POST(req: NextRequest) {
@@ -59,20 +73,16 @@ export async function POST(req: NextRequest) {
     });
   }
 
-  const apiKey = process.env.LEMON_SQUEEZY_API_KEY;
-  const storeId = process.env.LEMON_SQUEEZY_STORE_ID;
-  const variantWaitlist = process.env.LEMON_SQUEEZY_VARIANT_ID_WAITLIST;
-  const variantPublic = process.env.LEMON_SQUEEZY_VARIANT_ID_PUBLIC;
+  const waitlistLink = process.env.PAYPAL_PAYMENT_LINK_WAITLIST;
+  const publicLink = process.env.PAYPAL_PAYMENT_LINK_PUBLIC;
 
-  if (!apiKey || !storeId || !variantWaitlist || !variantPublic) {
+  if (!waitlistLink || !publicLink) {
     return new Response(
       JSON.stringify({
         error: "billing_not_configured",
         missing: [
-          !apiKey ? "LEMON_SQUEEZY_API_KEY" : null,
-          !storeId ? "LEMON_SQUEEZY_STORE_ID" : null,
-          !variantWaitlist ? "LEMON_SQUEEZY_VARIANT_ID_WAITLIST" : null,
-          !variantPublic ? "LEMON_SQUEEZY_VARIANT_ID_PUBLIC" : null,
+          !waitlistLink ? "PAYPAL_PAYMENT_LINK_WAITLIST" : null,
+          !publicLink ? "PAYPAL_PAYMENT_LINK_PUBLIC" : null,
         ].filter(Boolean),
       }),
       {
@@ -90,93 +100,26 @@ export async function POST(req: NextRequest) {
   const isWaitlist = tier === "waitlist";
   const priceZar = expected ?? (isWaitlist ? 150 : 250);
 
-  const variantId = isWaitlist ? variantWaitlist : variantPublic;
-
-  // Determine origin for redirect_url (Lemon Squeezy needs absolute URL).
   const reqOrigin = req.nextUrl.origin;
   const origin = process.env.ALINA_PUBLIC_ORIGIN || reqOrigin;
+  const successUrl = `${origin}${returnTo}?checkout=success`;
 
-  // IMPORTANT: This redirect does NOT unlock Pro by itself.
-  // Pro unlock must happen via the webhook (next step), using the custom data below.
-  const redirectUrl = `${origin}${returnTo}?checkout=success`;
+  const baseLink = isWaitlist ? waitlistLink : publicLink;
 
-  const testMode =
-    String(process.env.LEMON_SQUEEZY_TEST_MODE ?? "")
-      .toLowerCase()
-      .trim() === "true";
-
-  // Lemon Squeezy custom_price is in cents.
-  const customPriceCents = Math.round(priceZar * 100);
-
-  const payload = {
-    data: {
-      type: "checkouts",
-      attributes: {
-        custom_price: customPriceCents,
-        product_options: {
-          enabled_variants: [Number(variantId)],
-          redirect_url: redirectUrl,
-        },
-        checkout_data: {
-          email: user.email ?? "",
-          custom: {
-            supabase_user_id: user.id,
-            pricing_tier: isWaitlist ? "waitlist" : "public",
-            expected_price_zar: priceZar,
-            return_to: returnTo,
-          },
-        },
-        test_mode: testMode,
-      },
-      relationships: {
-        store: { data: { type: "stores", id: String(storeId) } },
-        variant: { data: { type: "variants", id: String(variantId) } },
-      },
-    },
-  };
-
-  const lsRes = await fetch("https://api.lemonsqueezy.com/v1/checkouts", {
-    method: "POST",
-    headers: {
-      Accept: "application/vnd.api+json",
-      "Content-Type": "application/vnd.api+json",
-      Authorization: `Bearer ${apiKey}`,
-    },
-    body: JSON.stringify(payload),
+  // If your PayPal link ignores extra params, that is fine.
+  // These are still useful for visibility and future reconciliation.
+  const checkoutUrl = withQuery(baseLink, {
+    email: user.email ?? "",
+    user_id: user.id,
+    tier: isWaitlist ? "waitlist" : "public",
+    expected_price_zar: String(priceZar),
+    return_to: successUrl,
   });
-
-  if (!lsRes.ok) {
-    const text = await lsRes.text().catch(() => "");
-    return new Response(
-      JSON.stringify({
-        error: "lemonsqueezy_checkout_failed",
-        status: lsRes.status,
-        details: text.slice(0, 2000),
-      }),
-      {
-        status: 502,
-        headers: { "Content-Type": "application/json; charset=utf-8" },
-      }
-    );
-  }
-
-  const json = (await lsRes.json()) as any;
-  const url = json?.data?.attributes?.url as string | undefined;
-
-  if (!url) {
-    return new Response(
-      JSON.stringify({ error: "lemonsqueezy_no_url_returned" }),
-      {
-        status: 502,
-        headers: { "Content-Type": "application/json; charset=utf-8" },
-      }
-    );
-  }
 
   return new Response(null, {
     status: 303,
     headers: {
-      Location: url,
+      Location: checkoutUrl,
     },
   });
 }
