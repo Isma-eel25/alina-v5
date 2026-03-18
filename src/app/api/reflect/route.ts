@@ -15,17 +15,13 @@ import {
   type PersonalityState,
 } from "@/lib/personalityState";
 import { upsertPersonalityStateSnapshot } from "@/lib/selfState";
+import { createSupabaseServerClient } from "@/lib/supabase/server";
 
 export const runtime = "nodejs";
 
-// CLAUDE SONNET 4.5 CLIENT
 const client = new Anthropic({
   apiKey: process.env.ANTHROPIC_API_KEY!,
 });
-
-// ------------------------------------------------------------
-// Types
-// ------------------------------------------------------------
 
 type ChatRole = "user" | "assistant";
 
@@ -53,20 +49,13 @@ type ReflectionModelJson = {
   };
 };
 
-// ------------------------------------------------------------
-// Helpers
-// ------------------------------------------------------------
-
 function isoNow(): string {
   return new Date().toISOString();
 }
 
 function safeMessages(raw: unknown): IncomingMessage[] {
   if (!Array.isArray(raw)) return [];
-
-  const toRole = (r: unknown): ChatRole =>
-    r === "user" ? "user" : "assistant";
-
+  const toRole = (r: unknown): ChatRole => (r === "user" ? "user" : "assistant");
   return raw
     .map((m: any): IncomingMessage => ({
       role: toRole(m?.role),
@@ -108,7 +97,6 @@ function applyReflectionPersonalityMutation(
       reason: "reflection_low_mood_support",
       signals: { mood, source: "reflect_v1" },
     });
-
     next = mutateTrait(next, {
       trait: "challenge",
       requestedDelta: -0.02,
@@ -128,11 +116,9 @@ function applyReflectionPersonalityMutation(
 }
 
 function coerceVitalsSnapshot(v: any): VitalsSnapshot {
-  const mood =
-    ["very_low", "low", "neutral", "good", "high"].includes(v?.mood)
-      ? v.mood
-      : "neutral";
-
+  const mood = ["very_low", "low", "neutral", "good", "high"].includes(v?.mood)
+    ? v.mood
+    : "neutral";
   return {
     ...(v ?? {}),
     mood,
@@ -188,46 +174,31 @@ function coerceUserProfileSummary(x: unknown): string {
   return s.split("\n").map((l) => l.trim()).filter(Boolean).slice(0, 3).join("\n");
 }
 
-function makeUserId(): string {
-  return crypto.randomUUID
-    ? crypto.randomUUID()
-    : `${Date.now()}-${Math.random().toString(16).slice(2)}`;
-}
-
-function getStableUserId(
-  req: NextRequest,
-  bodyUserId?: string | null
-): { userId: string; setCookieHeader: string | null } {
-  const provided = (bodyUserId ?? "").trim();
-  if (provided) return { userId: provided, setCookieHeader: null };
-
-  const existing = req.cookies.get("alina_uid")?.value ?? "";
-  if (existing.trim()) return { userId: existing.trim(), setCookieHeader: null };
-
-  const fresh = makeUserId();
-  const cookie = [
-    `alina_uid=${encodeURIComponent(fresh)}`,
-    "Path=/",
-    "HttpOnly",
-    "SameSite=Lax",
-    `Max-Age=${60 * 60 * 24 * 365}`,
-  ].join("; ");
-
-  return { userId: fresh, setCookieHeader: cookie };
-}
-
 // ------------------------------------------------------------
 // Main Handler
 // ------------------------------------------------------------
 
 export async function POST(req: NextRequest) {
   try {
-    const json = (await req.json()) as ReflectRequestBody;
+    // ── AUTH: Supabase session — same identity source as brain route ──
+    const supabase = await createSupabaseServerClient();
+    const {
+      data: { user: authUser },
+      error: authError,
+    } = await supabase.auth.getUser();
 
-    const { userId, setCookieHeader } = getStableUserId(
-      req,
-      json.userId ?? null
-    );
+    if (authError || !authUser) {
+      return new Response(JSON.stringify({ error: "unauthorized" }), {
+        status: 401,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+
+    // This is now always the Supabase user ID — never a cookie, never a body param.
+    const userId = authUser.id;
+    // ─────────────────────────────────────────────────────────────────
+
+    const json = (await req.json()) as ReflectRequestBody;
 
     const incoming = safeMessages(json.messages);
     const chatMessages = toChatMessages(incoming);
@@ -240,12 +211,8 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const prompt = buildReflectionPrompt(
-      shortTerm,
-      json.vitalsSummary ?? null
-    );
+    const prompt = buildReflectionPrompt(shortTerm, json.vitalsSummary ?? null);
 
-    // CLAUDE SONNET 4.5 CALL (with retry on transient errors)
     let resp: any;
     {
       const maxAttempts = 3;
@@ -262,7 +229,10 @@ export async function POST(req: NextRequest) {
         } catch (err: any) {
           lastErr = err;
           const status = err?.status ?? err?.statusCode ?? 0;
-          if ((status === 529 || status === 503 || status === 429 || status === 500) && attempt < maxAttempts) {
+          if (
+            (status === 529 || status === 503 || status === 429 || status === 500) &&
+            attempt < maxAttempts
+          ) {
             const delay = 1500 * attempt;
             console.warn(`Reflect API error ${status} (attempt ${attempt}), retrying in ${delay}ms...`);
             await new Promise((r) => setTimeout(r, delay));
@@ -279,13 +249,11 @@ export async function POST(req: NextRequest) {
     let parsed: Partial<ReflectionModelJson> = {};
     try {
       let cleaned = raw.trim();
-      // Strip leading ```json or ``` fences if present
       cleaned = cleaned
         .replace(/^```(?:json)?\s*/i, "")
         .replace(/```+\s*$/i, "")
         .trim();
 
-      // Best-effort: extract the first JSON object braces
       const firstBrace = cleaned.indexOf("{");
       const lastBrace = cleaned.lastIndexOf("}");
       if (firstBrace !== -1 && lastBrace !== -1 && lastBrace > firstBrace) {
@@ -313,24 +281,21 @@ export async function POST(req: NextRequest) {
     }
 
     const diary = typeof parsed.diary === "string" ? parsed.diary.trim() : "";
-    const userProfileSummary = coerceUserProfileSummary(
-      parsed.userProfileSummary
-    );
+    const userProfileSummary = coerceUserProfileSummary(parsed.userProfileSummary);
     const vitalsSnapshot = coerceVitalsSnapshot(parsed.vitalsSnapshot);
 
-    // Distilled REFLECTION SIGNAL v1
     const reflectionSignal = {
       userProfileSummary,
       mood: (vitalsSnapshot as any).mood,
       focus: (vitalsSnapshot as any).focus,
       clarity: (vitalsSnapshot as any).clarity,
-   energy: (vitalsSnapshot as any).energy,
+      energy: (vitalsSnapshot as any).energy,
       confidence: (vitalsSnapshot as any).confidence,
     };
 
     const createdAt = isoNow();
 
-    // Store in LTM
+    // Store in LTM — always keyed to authenticated Supabase user ID
     await addMemoryFromReflection({
       userId,
       diary,
@@ -338,27 +303,16 @@ export async function POST(req: NextRequest) {
       createdAt,
     } as any);
 
-    // Personality drift
     let personalityState: PersonalityState | null = null;
     try {
       const current = getOrInitPersonalityState();
-      const mutated = applyReflectionPersonalityMutation(
-        current,
-        diary,
-        vitalsSnapshot
-      );
+      const mutated = applyReflectionPersonalityMutation(current, diary, vitalsSnapshot);
       currentPersonalityState = mutated;
       personalityState = mutated;
-
       await upsertPersonalityStateSnapshot(userId, mutated);
     } catch (err) {
       console.warn("Personality mutation failed:", err);
     }
-
-    const headers: Record<string, string> = {
-      "Content-Type": "application/json",
-    };
-    if (setCookieHeader) headers["Set-Cookie"] = setCookieHeader;
 
     return new Response(
       JSON.stringify({
@@ -369,7 +323,7 @@ export async function POST(req: NextRequest) {
         createdAt,
         personalityState,
       }),
-      { headers }
+      { headers: { "Content-Type": "application/json" } }
     );
   } catch (error: any) {
     const status = error?.status ?? error?.statusCode ?? 0;
