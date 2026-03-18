@@ -11,6 +11,7 @@ import remarkGfm from "remark-gfm";
 import remarkMath from "remark-math";
 import rehypeKatex from "rehype-katex";
 import "katex/dist/katex.min.css";
+import { createClient } from "@/lib/supabase/client";
 
 type Role = "user" | "alina";
 
@@ -60,8 +61,9 @@ type FeedbackDraft = {
 // ============================================
 // CONSTANTS & CONFIGURATION
 // ============================================
-const SESSIONS_STORAGE_KEY = "alina_sessions_v2";
-const ACTIVE_SESSION_ID_KEY = "alina_active_session_id_v2";
+// Sessions are scoped per user ID so different accounts never share localStorage data.
+function getSessionsKey(userId: string) { return `alina_sessions_v2_${userId}`; }
+function getActiveSessionKey(userId: string) { return `alina_active_session_id_v2_${userId}`; }
 
 const REFLECT_DEBOUNCE_MS = 1800;
 const REFLECT_COOLDOWN_MS = 25_000;
@@ -418,8 +420,12 @@ export default function AlinaChat() {
   const [locusCollapsed, setLocusCollapsed] = useState(false);
   const [showUpgrade, setShowUpgrade] = useState(false);
   const [feedbackByMessageId, setFeedbackByMessageId] = useState<Record<string, FeedbackDraft>>({});
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+  const [userEmail, setUserEmail] = useState<string | null>(null);
+  const [isLoggingOut, setIsLoggingOut] = useState(false);
 
   const router = useRouter();
+  const supabase = createClient();
 
   const sessionsRef = useRef<SessionV1[]>([]);
   const activeSessionIdRef = useRef<string>("");
@@ -467,11 +473,26 @@ export default function AlinaChat() {
   useEffect(() => { sessionsRef.current = sessions; }, [sessions]);
   useEffect(() => { activeSessionIdRef.current = activeSessionId; }, [activeSessionId]);
 
+  // ── LOAD USER + USER-SCOPED SESSIONS ──────────────────────────────────
   useEffect(() => {
-    const loadSessions = () => {
+    const init = async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+
+      if (!user) {
+        // Not logged in — redirect to login
+        router.replace("/login");
+        return;
+      }
+
+      setCurrentUserId(user.id);
+      setUserEmail(user.email ?? null);
+
+      const SESSIONS_KEY = getSessionsKey(user.id);
+      const ACTIVE_KEY = getActiveSessionKey(user.id);
+
       try {
-        const saved = localStorage.getItem(SESSIONS_STORAGE_KEY);
-        const active = localStorage.getItem(ACTIVE_SESSION_ID_KEY);
+        const saved = localStorage.getItem(SESSIONS_KEY);
+        const active = localStorage.getItem(ACTIVE_KEY);
 
         if (saved) {
           const parsed = JSON.parse(saved);
@@ -483,17 +504,17 @@ export default function AlinaChat() {
           } else if (normalized[0]) {
             setActiveSessionId(normalized[0].id);
           } else {
-            createNewSession(true);
+            createNewSessionForUser(user.id, true);
           }
         } else {
-          createNewSession(true);
+          createNewSessionForUser(user.id, true);
         }
       } catch {
-        createNewSession(true);
+        createNewSessionForUser(user.id, true);
       }
     };
 
-    loadSessions();
+    init();
   }, []);
 
   // On mobile, default sidebar to closed
@@ -503,14 +524,16 @@ export default function AlinaChat() {
     }
   }, []);
 
+  // ── PERSIST SESSIONS — scoped to user ID ──────────────────────────────
   useEffect(() => {
+    if (!currentUserId) return;
     if (sessions.length > 0) {
-      localStorage.setItem(SESSIONS_STORAGE_KEY, JSON.stringify(sessions));
+      localStorage.setItem(getSessionsKey(currentUserId), JSON.stringify(sessions));
     }
     if (activeSessionId) {
-      localStorage.setItem(ACTIVE_SESSION_ID_KEY, activeSessionId);
+      localStorage.setItem(getActiveSessionKey(currentUserId), activeSessionId);
     }
-  }, [sessions, activeSessionId]);
+  }, [sessions, activeSessionId, currentUserId]);
 
   useEffect(() => {
     const container = chatContainerRef.current;
@@ -536,7 +559,8 @@ export default function AlinaChat() {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   };
 
-  const createNewSession = useCallback((silent?: boolean) => {
+  // Internal helper — creates session without needing currentUserId from state
+  const createNewSessionForUser = useCallback((userId: string, silent?: boolean) => {
     const fresh: SessionV1 = {
       id: makeId("sess"),
       title: "New Chat",
@@ -559,6 +583,12 @@ export default function AlinaChat() {
     lastReflectAtRef.current = 0;
     lastReflectMsgCountRef.current = 0;
   }, []);
+
+  const createNewSession = useCallback((silent?: boolean) => {
+    if (currentUserId) {
+      createNewSessionForUser(currentUserId, silent);
+    }
+  }, [currentUserId, createNewSessionForUser]);
 
   const deleteSession = useCallback((e: React.MouseEvent, id: string) => {
     e.stopPropagation();
@@ -590,6 +620,18 @@ export default function AlinaChat() {
     if (!id) return null;
     return sessionsRef.current.find((s) => s.id === id) || null;
   }, []);
+
+  // ── LOGOUT ────────────────────────────────────────────────────────────
+  const handleLogout = useCallback(async () => {
+    if (isLoggingOut) return;
+    setIsLoggingOut(true);
+    try {
+      await supabase.auth.signOut();
+      router.replace("/login");
+    } catch {
+      setIsLoggingOut(false);
+    }
+  }, [isLoggingOut, router, supabase]);
 
   const patchFeedbackDraft = useCallback((messageId: string, patch: Partial<FeedbackDraft>) => {
     setFeedbackByMessageId((prev) => ({
@@ -742,6 +784,12 @@ export default function AlinaChat() {
           userProfileSummary: sessLive?.userProfile?.summary ?? null,
         }),
       });
+
+      // Session expired — redirect to login
+      if (res.status === 401) {
+        router.replace("/login");
+        return;
+      }
 
       if (res.status === 402) {
         setShowUpgrade(true);
@@ -1052,7 +1100,6 @@ export default function AlinaChat() {
           pointer-events: none;
         }
 
-        /* Prevent horizontal scroll on mobile */
         @media (max-width: 767px) {
           .mobile-no-overflow {
             overflow-x: hidden;
@@ -1153,10 +1200,41 @@ export default function AlinaChat() {
           ))}
         </div>
 
-        <div className="p-4 border-t border-cyan-500/10">
-          <div className="flex items-center gap-3 text-xs text-slate-500">
-            <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
-            <span>System Operational</span>
+        {/* ── SIDEBAR FOOTER: user info + logout ── */}
+        <div className="p-4 border-t border-cyan-500/10 space-y-3">
+          {userEmail && (
+            <div className="flex items-center gap-2 min-w-0">
+              <div className="w-6 h-6 rounded-full bg-cyan-500/20 flex items-center justify-center flex-shrink-0">
+                <svg className="w-3.5 h-3.5 text-cyan-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                </svg>
+              </div>
+              <span className="text-xs text-slate-400 truncate">{userEmail}</span>
+            </div>
+          )}
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2 text-xs text-slate-500">
+              <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
+              <span>System Operational</span>
+            </div>
+            <button
+              onClick={handleLogout}
+              disabled={isLoggingOut}
+              className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs text-slate-400 hover:text-red-400 hover:bg-red-500/10 transition-all disabled:opacity-50"
+              title="Sign out"
+            >
+              {isLoggingOut ? (
+                <svg className="w-3.5 h-3.5 animate-spin" fill="none" viewBox="0 0 24 24">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                </svg>
+              ) : (
+                <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
+                </svg>
+              )}
+              {isLoggingOut ? "Signing out…" : "Sign out"}
+            </button>
           </div>
         </div>
       </aside>
