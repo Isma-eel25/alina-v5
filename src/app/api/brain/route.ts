@@ -1599,13 +1599,9 @@ export async function POST(req: NextRequest) {
       vitalsSnapshot,
       reflectionSummary,
       systemOverride,
-      userId: rawUserId,
     } = json;
 
-    const { userId: provisionalUserId, setCookieHeader } = getStableUserId(
-      req,
-      rawUserId,
-    );
+    const setCookieHeader: string | null = null;
 
     // ---- Auth + optional Pro gate (kept isolated; does not touch AI core or streaming) ----
     const supabase = await createSupabaseServerClient();
@@ -1624,8 +1620,6 @@ export async function POST(req: NextRequest) {
         headers,
       });
     }
-
-    void provisionalUserId;
 
     const canonicalUserId = authUser.id;
 
