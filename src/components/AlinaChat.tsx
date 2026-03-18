@@ -218,8 +218,8 @@ const MarkdownComponents = {
 
     if (!inline && language) {
       return (
-        <div className="relative group my-4 rounded-xl overflow-hidden border border-cyan-500/20">
-          <div className="flex items-center justify-between px-4 py-2 bg-slate-900/80 border-b border-cyan-500/10">
+        <div className="relative group my-3 rounded-xl overflow-hidden border border-cyan-500/20 max-w-full">
+          <div className="flex items-center justify-between px-3 py-2 bg-slate-900/80 border-b border-cyan-500/10">
             <span className="text-xs font-mono text-cyan-400">{language}</span>
             <button
               onClick={() => navigator.clipboard.writeText(String(children).replace(/\n$/, ""))}
@@ -228,28 +228,31 @@ const MarkdownComponents = {
               Copy
             </button>
           </div>
-          <SyntaxHighlighter
-            style={vscDarkPlus}
-            language={language}
-            PreTag="div"
-            customStyle={{
-              margin: 0,
-              padding: "1.5rem",
-              background: "rgba(2, 6, 23, 0.95)",
-              fontSize: "0.875rem",
-              lineHeight: "1.7",
-            }}
-            {...props}
-          >
-            {String(children).replace(/\n$/, "")}
-          </SyntaxHighlighter>
+          <div className="overflow-x-auto">
+            <SyntaxHighlighter
+              style={vscDarkPlus}
+              language={language}
+              PreTag="div"
+              customStyle={{
+                margin: 0,
+                padding: "1rem",
+                background: "rgba(2, 6, 23, 0.95)",
+                fontSize: "0.8rem",
+                lineHeight: "1.7",
+                minWidth: 0,
+              }}
+              {...props}
+            >
+              {String(children).replace(/\n$/, "")}
+            </SyntaxHighlighter>
+          </div>
         </div>
       );
     }
 
     return (
       <code
-        className="px-1.5 py-0.5 rounded-md bg-cyan-500/10 text-cyan-300 font-mono text-sm border border-cyan-500/20"
+        className="px-1.5 py-0.5 rounded-md bg-cyan-500/10 text-cyan-300 font-mono text-[0.8em] border border-cyan-500/20 break-words"
         {...props}
       >
         {children}
@@ -258,41 +261,41 @@ const MarkdownComponents = {
   },
 
   p({ children }: any) {
-    return <p className="mb-4 leading-relaxed text-slate-300 last:mb-0">{children}</p>;
+    return <p className="mb-3 leading-relaxed text-slate-300 last:mb-0 break-words">{children}</p>;
   },
 
   h1({ children }: any) {
-    return <h1 className="text-2xl font-bold text-white mb-4 mt-6 border-b border-cyan-500/20 pb-2">{children}</h1>;
+    return <h1 className="text-xl font-bold text-white mb-3 mt-5 border-b border-cyan-500/20 pb-2 break-words">{children}</h1>;
   },
 
   h2({ children }: any) {
-    return <h2 className="text-xl font-semibold text-cyan-100 mb-3 mt-5">{children}</h2>;
+    return <h2 className="text-lg font-semibold text-cyan-100 mb-2 mt-4 break-words">{children}</h2>;
   },
 
   h3({ children }: any) {
-    return <h3 className="text-lg font-medium text-cyan-200/90 mb-2 mt-4">{children}</h3>;
+    return <h3 className="text-base font-medium text-cyan-200/90 mb-2 mt-3 break-words">{children}</h3>;
   },
 
   ul({ children }: any) {
-    return <ul className="mb-4 space-y-2 ml-4">{children}</ul>;
+    return <ul className="mb-3 space-y-1.5 ml-3">{children}</ul>;
   },
 
   ol({ children }: any) {
-    return <ol className="mb-4 space-y-2 ml-4 list-decimal">{children}</ol>;
+    return <ol className="mb-3 space-y-1.5 ml-3 list-decimal">{children}</ol>;
   },
 
   li({ children }: any) {
     return (
       <li className="flex items-start gap-2 text-slate-300">
-        <span className="text-cyan-500 mt-1.5">•</span>
-        <span className="leading-relaxed">{children}</span>
+        <span className="text-cyan-500 mt-1.5 flex-shrink-0">•</span>
+        <span className="leading-relaxed break-words min-w-0">{children}</span>
       </li>
     );
   },
 
   blockquote({ children }: any) {
     return (
-      <blockquote className="border-l-2 border-cyan-500/50 pl-4 my-4 italic text-slate-400 bg-cyan-500/5 py-2 pr-4 rounded-r-lg">
+      <blockquote className="border-l-2 border-cyan-500/50 pl-3 my-3 italic text-slate-400 bg-cyan-500/5 py-2 pr-3 rounded-r-lg break-words">
         {children}
       </blockquote>
     );
@@ -304,7 +307,7 @@ const MarkdownComponents = {
         href={href}
         target="_blank"
         rel="noopener noreferrer"
-        className="text-cyan-400 hover:text-cyan-300 underline underline-offset-2 transition-colors"
+        className="text-cyan-400 hover:text-cyan-300 underline underline-offset-2 transition-colors break-all"
       >
         {children}
       </a>
@@ -313,7 +316,7 @@ const MarkdownComponents = {
 
   table({ children }: any) {
     return (
-      <div className="overflow-x-auto my-4 rounded-xl border border-cyan-500/20">
+      <div className="overflow-x-auto my-3 rounded-xl border border-cyan-500/20 max-w-full">
         <table className="w-full text-sm">{children}</table>
       </div>
     );
@@ -324,15 +327,15 @@ const MarkdownComponents = {
   },
 
   th({ children }: any) {
-    return <th className="px-4 py-3 text-left font-medium border-b border-cyan-500/20">{children}</th>;
+    return <th className="px-3 py-2 text-left font-medium border-b border-cyan-500/20 whitespace-nowrap">{children}</th>;
   },
 
   td({ children }: any) {
-    return <td className="px-4 py-3 border-b border-slate-700/50 text-slate-300">{children}</td>;
+    return <td className="px-3 py-2 border-b border-slate-700/50 text-slate-300">{children}</td>;
   },
 
   hr() {
-    return <hr className="my-6 border-cyan-500/20" />;
+    return <hr className="my-5 border-cyan-500/20" />;
   },
 };
 
@@ -358,7 +361,7 @@ function AlinaLogo({ size = "md" }: { size?: "sm" | "md" | "lg" }) {
   };
 
   return (
-    <div className={`${sizeClasses[size]} relative`}>
+    <div className={`${sizeClasses[size]} relative flex-shrink-0`}>
       <div className="absolute inset-0 bg-cyan-500 rounded-lg blur-lg opacity-50 animate-pulse" />
       <div className="relative w-full h-full bg-gradient-to-br from-cyan-400 to-cyan-600 rounded-lg flex items-center justify-center shadow-lg shadow-cyan-500/25">
         <svg viewBox="0 0 24 24" className="w-3/5 h-3/5 text-white" fill="currentColor">
@@ -491,6 +494,13 @@ export default function AlinaChat() {
     };
 
     loadSessions();
+  }, []);
+
+  // On mobile, default sidebar to closed
+  useEffect(() => {
+    if (typeof window !== "undefined" && window.innerWidth < 768) {
+      setSidebarOpen(false);
+    }
   }, []);
 
   useEffect(() => {
@@ -966,7 +976,7 @@ export default function AlinaChat() {
         <div className="absolute top-4 left-1/2 -translate-x-1/2 z-50 w-[min(92vw,620px)] rounded-2xl border border-yellow-400/25 bg-yellow-400/10 px-4 py-3 shadow-lg backdrop-blur">
           <div className="flex items-center justify-between gap-3">
             <div className="text-sm text-yellow-100/90">
-              🔒 You’ve hit the paywall. Upgrade to keep chatting with Alina.
+              🔒 You've hit the paywall. Upgrade to keep chatting with Alina.
             </div>
             <button
               type="button"
@@ -1041,20 +1051,56 @@ export default function AlinaChat() {
           mask-composite: exclude;
           pointer-events: none;
         }
+
+        /* Prevent horizontal scroll on mobile */
+        @media (max-width: 767px) {
+          .mobile-no-overflow {
+            overflow-x: hidden;
+            max-width: 100vw;
+          }
+        }
       `}</style>
 
+      {/* ── MOBILE OVERLAY ── */}
+      {sidebarOpen && (
+        <div
+          className="fixed inset-0 bg-black/60 backdrop-blur-sm z-30 md:hidden"
+          onClick={() => setSidebarOpen(false)}
+        />
+      )}
+
+      {/* ── SIDEBAR ── Desktop: static | Mobile: drawer */}
       <aside
-        className={`flex flex-col border-r border-cyan-500/10 bg-[#0f172a]/80 backdrop-blur-xl transition-all duration-300 ${
-          sidebarOpen ? "w-72" : "w-0 opacity-0 overflow-hidden"
-        }`}
+        className={`
+          flex flex-col border-r border-cyan-500/10 bg-[#0f172a]/95 backdrop-blur-xl
+          transition-transform duration-300 ease-in-out
+          md:relative md:translate-x-0 md:z-auto
+          fixed inset-y-0 left-0 z-40
+          ${sidebarOpen ? "translate-x-0" : "-translate-x-full"}
+          w-72
+          md:transition-all md:duration-300
+          ${!sidebarOpen ? "md:w-0 md:opacity-0 md:overflow-hidden md:border-0" : "md:opacity-100 md:w-72"}
+        `}
       >
         <div className="p-4 border-b border-cyan-500/10">
-          <div className="flex items-center gap-3 mb-4">
-            <AlinaLogo size="sm" />
-            <div>
-              <h1 className="font-bold text-lg tracking-tight">Alina</h1>
-              <p className="text-xs text-cyan-400/70">v5.0 Neural Interface</p>
+          <div className="flex items-center justify-between mb-4">
+            <div className="flex items-center gap-3">
+              <AlinaLogo size="sm" />
+              <div>
+                <h1 className="font-bold text-lg tracking-tight">Alina</h1>
+                <p className="text-xs text-cyan-400/70">v5.0 Neural Interface</p>
+              </div>
             </div>
+            {/* Close button — mobile only */}
+            <button
+              onClick={() => setSidebarOpen(false)}
+              className="md:hidden p-1.5 rounded-lg text-slate-400 hover:text-cyan-400 hover:bg-slate-800/50 transition-colors"
+              aria-label="Close sidebar"
+            >
+              <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
           </div>
 
           <button
@@ -1075,7 +1121,7 @@ export default function AlinaChat() {
               onClick={() => {
                 setActiveSessionId(s.id);
                 setSelectedMemoryId(null);
-                if (window.innerWidth < 768) setSidebarOpen(false);
+                if (typeof window !== "undefined" && window.innerWidth < 768) setSidebarOpen(false);
               }}
               className={`group relative p-3 rounded-xl cursor-pointer transition-all duration-200 ${
                 s.id === activeSessionId
@@ -1084,7 +1130,7 @@ export default function AlinaChat() {
               }`}
             >
               <div className="flex items-start gap-3">
-                <div className={`mt-1 w-2 h-2 rounded-full ${s.id === activeSessionId ? "bg-cyan-400" : "bg-slate-600"}`} />
+                <div className={`mt-1 w-2 h-2 rounded-full flex-shrink-0 ${s.id === activeSessionId ? "bg-cyan-400" : "bg-slate-600"}`} />
                 <div className="flex-1 min-w-0">
                   <p className={`text-sm font-medium truncate ${s.id === activeSessionId ? "text-cyan-100" : "text-slate-300"}`}>
                     {s.title}
@@ -1115,27 +1161,28 @@ export default function AlinaChat() {
         </div>
       </aside>
 
-      <main className="flex-1 flex flex-col min-w-0 relative">
+      <main className="flex-1 flex flex-col min-w-0 relative overflow-hidden">
         <div className="absolute inset-0 overflow-hidden pointer-events-none">
           <div className="absolute top-0 left-1/4 w-96 h-96 bg-cyan-500/5 rounded-full blur-3xl" />
           <div className="absolute bottom-0 right-1/4 w-96 h-96 bg-purple-500/5 rounded-full blur-3xl" />
         </div>
 
-        <header className="h-16 border-b border-cyan-500/10 flex items-center justify-between px-4 bg-[#0f172a]/50 backdrop-blur-xl z-20">
-          <div className="flex items-center gap-4">
+        {/* ── HEADER ── */}
+        <header className="h-14 md:h-16 border-b border-cyan-500/10 flex items-center justify-between px-3 md:px-4 bg-[#0f172a]/50 backdrop-blur-xl z-20 flex-shrink-0">
+          <div className="flex items-center gap-2 md:gap-4 min-w-0">
             <button
               onClick={() => setSidebarOpen(!sidebarOpen)}
-              className="p-2 hover:bg-slate-800/50 rounded-lg text-slate-400 hover:text-cyan-400 transition-colors"
+              className="p-2 hover:bg-slate-800/50 rounded-lg text-slate-400 hover:text-cyan-400 transition-colors flex-shrink-0"
             >
               <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
               </svg>
             </button>
 
-            <div className="flex items-center gap-1 bg-slate-800/50 rounded-lg p-1">
+            <div className="flex items-center gap-0.5 md:gap-1 bg-slate-800/50 rounded-lg p-1 flex-shrink-0">
               <button
                 onClick={() => setMode("chat")}
-                className={`px-4 py-1.5 rounded-md text-sm font-medium transition-all ${
+                className={`px-3 md:px-4 py-1.5 rounded-md text-xs md:text-sm font-medium transition-all ${
                   mode === "chat"
                     ? "bg-cyan-500/20 text-cyan-400"
                     : "text-slate-400 hover:text-slate-200"
@@ -1145,7 +1192,7 @@ export default function AlinaChat() {
               </button>
               <button
                 onClick={() => setMode("index")}
-                className={`px-4 py-1.5 rounded-md text-sm font-medium transition-all ${
+                className={`px-3 md:px-4 py-1.5 rounded-md text-xs md:text-sm font-medium transition-all ${
                   mode === "index"
                     ? "bg-purple-500/20 text-purple-400"
                     : "text-slate-400 hover:text-slate-200"
@@ -1156,9 +1203,9 @@ export default function AlinaChat() {
             </div>
           </div>
 
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2 md:gap-3 flex-shrink-0">
             {mode === "chat" && activeSession && (
-              <span className="text-sm text-slate-500 hidden sm:block">
+              <span className="text-xs md:text-sm text-slate-500 hidden sm:block">
                 {messages.length} messages
               </span>
             )}
@@ -1221,12 +1268,13 @@ export default function AlinaChat() {
           }
         />
 
-        <div className="flex-1 overflow-hidden relative">
+        <div className="flex-1 overflow-hidden relative min-h-0">
           {mode === "chat" ? (
             <div className="h-full flex flex-col">
+              {/* ── MESSAGE LIST ── */}
               <div
                 ref={chatContainerRef}
-                className="flex-1 overflow-y-auto custom-scrollbar p-4 space-y-3"
+                className="flex-1 overflow-y-auto overflow-x-hidden custom-scrollbar px-3 py-3 md:p-4 space-y-3 min-h-0"
               >
                 {messages.map((m, idx) => {
                   const isUser = m.role === "user";
@@ -1239,11 +1287,11 @@ export default function AlinaChat() {
                       className={`message-enter flex ${isUser ? "justify-end" : "justify-start"}`}
                       style={{ animationDelay: `${idx * 50}ms` }}
                     >
-                      <div className={`flex gap-2 max-w-[85%] lg:max-w-[75%] ${isUser ? "flex-row-reverse" : ""}`}>
-                        <div className="flex-shrink-0">
+                      <div className={`flex gap-1.5 md:gap-2 w-full max-w-[90%] md:max-w-[85%] lg:max-w-[75%] ${isUser ? "flex-row-reverse ml-auto" : "mr-auto"}`}>
+                        <div className="flex-shrink-0 mt-1">
                           {isUser ? (
-                            <div className="w-8 h-8 rounded-full bg-slate-700 flex items-center justify-center">
-                              <svg className="w-4 h-4 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <div className="w-7 h-7 md:w-8 md:h-8 rounded-full bg-slate-700 flex items-center justify-center">
+                              <svg className="w-3.5 h-3.5 md:w-4 md:h-4 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
                               </svg>
                             </div>
@@ -1252,9 +1300,9 @@ export default function AlinaChat() {
                           )}
                         </div>
 
-                        <div className={`flex flex-col ${isUser ? "items-end" : "items-start"}`}>
+                        <div className={`flex flex-col min-w-0 flex-1 ${isUser ? "items-end" : "items-start"}`}>
                           <div
-                            className={`px-5 py-3.5 rounded-2xl ${
+                            className={`px-3.5 py-3 md:px-5 md:py-3.5 rounded-2xl max-w-full min-w-0 ${
                               isUser
                                 ? "bg-cyan-600 text-white rounded-br-md"
                                 : "glass-panel text-slate-200 rounded-bl-md"
@@ -1263,7 +1311,7 @@ export default function AlinaChat() {
                             {m.isStreaming && !m.content ? (
                               <ThinkingIndicator />
                             ) : (
-                              <div className={`prose prose-invert max-w-none ${isUser ? "prose-p:text-white prose-strong:text-white" : ""}`}>
+                              <div className={`prose prose-invert max-w-none text-sm md:text-base break-words overflow-hidden ${isUser ? "prose-p:text-white prose-strong:text-white" : ""}`}>
                                 <ReactMarkdown
                                   remarkPlugins={[remarkGfm, remarkMath]}
                                   rehypePlugins={[rehypeKatex]}
@@ -1275,14 +1323,14 @@ export default function AlinaChat() {
                             )}
                           </div>
 
-                          <span className="text-[10px] text-slate-500 mt-1.5 px-1">
+                          <span className="text-[10px] text-slate-500 mt-1 px-1">
                             {new Date(m.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
                           </span>
 
                           {showFeedbackControls && feedbackDraft && (
-                            <div className="mt-2 w-full max-w-xl rounded-xl border border-cyan-500/10 bg-slate-900/40 px-3 py-2">
-                              <div className="flex items-center gap-2 text-xs text-slate-400">
-                                <span className="mr-1">Was this helpful?</span>
+                            <div className="mt-2 w-full rounded-xl border border-cyan-500/10 bg-slate-900/40 px-2.5 py-2 md:px-3">
+                              <div className="flex flex-wrap items-center gap-1.5 md:gap-2 text-xs text-slate-400">
+                                <span className="text-slate-500">Was this helpful?</span>
                                 <button
                                   type="button"
                                   onClick={() => void handleHelpfulClick(m.id)}
@@ -1311,12 +1359,12 @@ export default function AlinaChat() {
                                   <span className="text-cyan-400">Saving…</span>
                                 )}
                                 {feedbackDraft.isSubmitted && (
-                                  <span className="text-green-400">Saved</span>
+                                  <span className="text-green-400">Saved ✓</span>
                                 )}
                               </div>
 
                               {feedbackDraft.showCommentBox && !feedbackDraft.isSubmitted && (
-                                <div className="mt-3 space-y-2">
+                                <div className="mt-2.5 space-y-2">
                                   <textarea
                                     value={feedbackDraft.comment}
                                     onChange={(e) => handleFeedbackCommentChange(m.id, e.target.value)}
@@ -1325,7 +1373,7 @@ export default function AlinaChat() {
                                     className="w-full resize-none rounded-xl border border-slate-700 bg-slate-950/70 px-3 py-2 text-sm text-slate-200 outline-none placeholder:text-slate-500 focus:border-cyan-500/40"
                                     disabled={feedbackDraft.isSubmitting}
                                   />
-                                  <div className="flex items-center gap-2">
+                                  <div className="flex flex-wrap items-center gap-2">
                                     <button
                                       type="button"
                                       onClick={() => void handleFeedbackSubmit(m.id)}
@@ -1359,10 +1407,11 @@ export default function AlinaChat() {
                 <div ref={messagesEndRef} />
               </div>
 
+              {/* ── SCROLL TO BOTTOM BUTTON ── */}
               {showScrollButton && (
                 <button
                   onClick={scrollToBottom}
-                  className="absolute bottom-24 right-6 p-2 bg-slate-800/80 hover:bg-slate-700 text-slate-300 rounded-full shadow-lg border border-cyan-500/20 transition-all z-10"
+                  className="absolute bottom-24 right-4 md:right-6 p-2 bg-slate-800/80 hover:bg-slate-700 text-slate-300 rounded-full shadow-lg border border-cyan-500/20 transition-all z-10"
                 >
                   <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 14l-7 7m0 0l-7-7m7 7V3" />
@@ -1370,19 +1419,20 @@ export default function AlinaChat() {
                 </button>
               )}
 
-              <div className="p-4 bg-gradient-to-t from-[#020617] via-[#020617] to-transparent">
+              {/* ── INPUT AREA ── */}
+              <div className="flex-shrink-0 px-3 pb-3 pt-2 md:p-4 bg-gradient-to-t from-[#020617] via-[#020617]/95 to-transparent">
                 <form onSubmit={handleSubmit} className="max-w-4xl mx-auto">
                   {attachedFile && (
-                    <div className="flex items-center gap-2 mb-2 px-2">
-                      <div className="flex items-center gap-2 px-3 py-1.5 bg-cyan-500/10 border border-cyan-500/30 rounded-lg text-xs text-cyan-300">
-                        <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <div className="flex items-center gap-2 mb-2 px-1">
+                      <div className="flex items-center gap-2 px-3 py-1.5 bg-cyan-500/10 border border-cyan-500/30 rounded-lg text-xs text-cyan-300 max-w-full overflow-hidden">
+                        <svg className="w-3.5 h-3.5 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
                         </svg>
-                        <span className="font-mono">{attachedFile.name}</span>
+                        <span className="font-mono truncate">{attachedFile.name}</span>
                         <button
                           type="button"
                           onClick={() => setAttachedFile(null)}
-                          className="ml-1 text-slate-400 hover:text-red-400 transition-colors"
+                          className="ml-1 text-slate-400 hover:text-red-400 transition-colors flex-shrink-0"
                         >
                           ×
                         </button>
@@ -1406,7 +1456,7 @@ export default function AlinaChat() {
                       e.target.value = "";
                     }}
                   />
-                  <div className="relative flex items-end gap-2 bg-slate-800/50 backdrop-blur-xl border border-cyan-500/20 rounded-2xl p-2 focus-within:border-cyan-500/50 focus-within:shadow-lg focus-within:shadow-cyan-500/10 transition-all">
+                  <div className="relative flex items-end gap-1.5 md:gap-2 bg-slate-800/50 backdrop-blur-xl border border-cyan-500/20 rounded-2xl p-2 focus-within:border-cyan-500/50 focus-within:shadow-lg focus-within:shadow-cyan-500/10 transition-all">
                     <textarea
                       ref={inputRef}
                       value={input}
@@ -1414,18 +1464,18 @@ export default function AlinaChat() {
                       onKeyDown={handleKeyDown}
                       placeholder="Message Alina..."
                       rows={1}
-                      className="flex-1 bg-transparent px-4 py-3 outline-none text-sm text-slate-100 placeholder:text-slate-500 resize-none max-h-52 custom-scrollbar"
+                      className="flex-1 bg-transparent px-2 py-2.5 md:px-4 md:py-3 outline-none text-sm text-slate-100 placeholder:text-slate-500 resize-none max-h-40 md:max-h-52 custom-scrollbar min-w-0"
                       disabled={isSending}
                     />
 
-                    <div className="flex items-center gap-1 pb-1 pr-1">
+                    <div className="flex items-center gap-0.5 md:gap-1 pb-1 pr-0.5 md:pr-1 flex-shrink-0">
                       <button
                         type="button"
                         onClick={() => fileInputRef.current?.click()}
                         className={`p-2 rounded-lg hover:bg-cyan-500/10 transition-colors ${attachedFile ? "text-cyan-400" : "text-slate-400 hover:text-cyan-400"}`}
                         title="Attach text or code file"
                       >
-                        <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <svg className="w-4 h-4 md:w-5 md:h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15.172 7l-6.586 6.586a2 2 0 102.828 2.828l6.414-6.586a4 4 0 00-5.656-5.656l-6.415 6.585a6 6 0 108.486 8.486L20.5 13" />
                         </svg>
                       </button>
@@ -1436,12 +1486,12 @@ export default function AlinaChat() {
                         className="p-2 bg-cyan-500 hover:bg-cyan-400 disabled:bg-slate-700 disabled:text-slate-500 text-slate-900 rounded-xl transition-all duration-200 shadow-lg shadow-cyan-500/20 disabled:shadow-none"
                       >
                         {isSending ? (
-                          <svg className="w-5 h-5 animate-spin" fill="none" viewBox="0 0 24 24">
+                          <svg className="w-4 h-4 md:w-5 md:h-5 animate-spin" fill="none" viewBox="0 0 24 24">
                             <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
                             <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
                           </svg>
                         ) : (
-                          <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
+                          <svg className="w-4 h-4 md:w-5 md:h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}>
                             <path strokeLinecap="round" strokeLinejoin="round" d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
                           </svg>
                         )}
@@ -1453,14 +1503,14 @@ export default function AlinaChat() {
             </div>
           ) : (
             <div className="h-full overflow-y-auto custom-scrollbar">
-              <div className="max-w-2xl mx-auto p-6 space-y-4">
+              <div className="max-w-2xl mx-auto p-3 md:p-6 space-y-4">
                 {userProfile && (
-                  <div className="glass-panel rounded-2xl p-5 gradient-border">
+                  <div className="glass-panel rounded-2xl p-4 md:p-5 gradient-border">
                     <div className="flex items-center justify-between mb-3">
                       <span className="text-[10px] font-semibold uppercase tracking-widest text-cyan-400">Profile</span>
                       <span className="text-[10px] text-slate-500">{formatRelativeTime(userProfile.updatedAt)}</span>
                     </div>
-                    <div className="prose prose-invert prose-sm max-w-none text-slate-300">
+                    <div className="prose prose-invert prose-sm max-w-none text-slate-300 break-words">
                       <ReactMarkdown remarkPlugins={[remarkGfm]} components={MarkdownComponents}>
                         {userProfile.summary}
                       </ReactMarkdown>
@@ -1476,7 +1526,7 @@ export default function AlinaChat() {
                     {memories.map((m) => (
                       <div
                         key={m.id}
-                        className={`group glass-panel rounded-2xl p-5 cursor-pointer transition-all duration-200 ${
+                        className={`group glass-panel rounded-2xl p-4 md:p-5 cursor-pointer transition-all duration-200 ${
                           selectedMemoryId === m.id
                             ? "border-cyan-500/30 bg-cyan-500/5"
                             : "hover:border-slate-600/50"
@@ -1484,7 +1534,7 @@ export default function AlinaChat() {
                         onClick={() => setSelectedMemoryId(selectedMemoryId === m.id ? null : m.id)}
                       >
                         <div className="flex items-center justify-between mb-2">
-                          <span className="text-[10px] font-mono text-slate-400">
+                          <span className="text-[10px] font-mono text-slate-400 break-words">
                             {new Date(m.createdAt).toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}
                           </span>
                           <button
@@ -1499,7 +1549,7 @@ export default function AlinaChat() {
                               );
                               if (selectedMemoryId === m.id) setSelectedMemoryId(null);
                             }}
-                            className="opacity-0 group-hover:opacity-100 p-1 text-slate-500 hover:text-red-400 transition-all rounded"
+                            className="opacity-0 group-hover:opacity-100 p-1 text-slate-500 hover:text-red-400 transition-all rounded flex-shrink-0 ml-2"
                           >
                             <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
@@ -1508,13 +1558,13 @@ export default function AlinaChat() {
                         </div>
 
                         {selectedMemoryId === m.id ? (
-                          <div className="prose prose-invert prose-sm max-w-none text-slate-300 message-enter">
+                          <div className="prose prose-invert prose-sm max-w-none text-slate-300 message-enter break-words">
                             <ReactMarkdown remarkPlugins={[remarkGfm]} components={MarkdownComponents}>
                               {m.diary}
                             </ReactMarkdown>
                           </div>
                         ) : (
-                          <p className="text-sm text-slate-400 line-clamp-3 leading-relaxed">{m.diary}</p>
+                          <p className="text-sm text-slate-400 line-clamp-3 leading-relaxed break-words">{m.diary}</p>
                         )}
                       </div>
                     ))}
