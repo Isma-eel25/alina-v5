@@ -58,7 +58,7 @@ import {
   type CreationIntent,
 } from "@/lib/creationEngine";
 
-import { createSupabaseServerClient } from "@/lib/supabase/server";
+import { createSupabaseServerClient, createSupabaseAdminClient } from "@/lib/supabase/server";
 
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 export const runtime = "nodejs";
@@ -189,6 +189,7 @@ async function ensureUsageTables() {
 
 // In production:
 // - If ALINA_OWNER_USER_ID matches this userId → "pro" (founder account, not billed)
+// - If user has is_subscribed=true or plan="pro" in Supabase metadata → "pro" (paid user)
 // - Everyone else → "free" (10 messages per month)
 // In development we also treat everyone as "pro" so testing is not rate-limited.
 async function getUserPlan(userId: string): Promise<SubscriptionPlan> {
@@ -199,6 +200,20 @@ async function getUserPlan(userId: string): Promise<SubscriptionPlan> {
   const ownerId = process.env.ALINA_OWNER_USER_ID;
   if (ownerId && ownerId === userId) {
     return "pro";
+  }
+
+  try {
+    const admin = createSupabaseAdminClient();
+    const { data } = await admin.auth.admin.getUserById(userId);
+    const meta = {
+      ...(data?.user?.user_metadata ?? {}),
+      ...(data?.user?.app_metadata ?? {}),
+    };
+    const isSubscribed = meta.is_subscribed === true || meta.isSubscribed === true;
+    const isPro = String(meta.plan ?? "").toLowerCase() === "pro";
+    if (isSubscribed || isPro) return "pro";
+  } catch {
+    // Supabase check failed — fall through to free safely
   }
 
   return "free";
