@@ -135,7 +135,7 @@ function generateSessionTitleFromMessages(messages: Message[]): string {
   const maxLen = 40;
   let title = cleaned;
   if (title.length > maxLen) {
-    title = title.slice(0, maxLen).trimEnd() + "â€¦";
+    title = title.slice(0, maxLen).trimEnd() + "…";
   }
   return title.charAt(0).toUpperCase() + title.slice(1);
 }
@@ -796,7 +796,7 @@ export default function AlinaChat() {
         updateActiveSession({
           messages: nextMsgs.map((m) =>
             m.id === aiM.id
-              ? { ...m, content: "ðŸ”’ Upgrade required to continue. Tap **Upgrade** to unlock full access.", isStreaming: false }
+              ? { ...m, content: "🔒 Upgrade required to continue. Tap **Upgrade** to unlock full access.", isStreaming: false }
               : m
           ),
         });
@@ -1024,7 +1024,7 @@ export default function AlinaChat() {
         <div className="absolute top-4 left-1/2 -translate-x-1/2 z-50 w-[min(92vw,620px)] rounded-2xl border border-yellow-400/25 bg-yellow-400/10 px-4 py-3 shadow-lg backdrop-blur">
           <div className="flex items-center justify-between gap-3">
             <div className="text-sm text-yellow-100/90">
-              ðŸ”’ You've hit the paywall. Upgrade to keep chatting with Alina.
+              🔒 You've hit the paywall. Upgrade to keep chatting with Alina.
             </div>
             <button
               type="button"
@@ -1233,7 +1233,7 @@ export default function AlinaChat() {
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 16l4-4m0 0l-4-4m4 4H7m6 4v1a3 3 0 01-3 3H6a3 3 0 01-3-3V7a3 3 0 013-3h4a3 3 0 013 3v1" />
                 </svg>
               )}
-              {isLoggingOut ? "Signing outâ€¦" : "Sign out"}
+              {isLoggingOut ? "Signing out…" : "Sign out"}
             </button>
           </div>
         </div>
@@ -1300,6 +1300,7 @@ export default function AlinaChat() {
           </div>
         </header>
 
+        <div className="hidden md:block">
         <AlinaLocus
           mode={locusMode}
           sessionCount={sessions.length}
@@ -1345,6 +1346,7 @@ export default function AlinaChat() {
               : undefined
           }
         />
+        </div>
 
         <div className="flex-1 overflow-hidden relative min-h-0">
           {mode === "chat" ? (
@@ -1419,7 +1421,7 @@ export default function AlinaChat() {
                                       : "border-slate-700 text-slate-300 hover:border-cyan-500/30 hover:text-cyan-300"
                                   } disabled:cursor-not-allowed disabled:opacity-70`}
                                 >
-                                  ðŸ‘ Helpful
+                                  👍 Helpful
                                 </button>
                                 <button
                                   type="button"
@@ -1431,13 +1433,13 @@ export default function AlinaChat() {
                                       : "border-slate-700 text-slate-300 hover:border-amber-500/30 hover:text-amber-300"
                                   } disabled:cursor-not-allowed disabled:opacity-70`}
                                 >
-                                  ðŸ‘Ž Not Helpful
+                                  👎 Not Helpful
                                 </button>
                                 {feedbackDraft.isSubmitting && (
-                                  <span className="text-cyan-400">Savingâ€¦</span>
+                                  <span className="text-cyan-400">Saving…</span>
                                 )}
                                 {feedbackDraft.isSubmitted && (
-                                  <span className="text-green-400">Saved âœ“</span>
+                                  <span className="text-green-400">Saved ✓</span>
                                 )}
                               </div>
 
