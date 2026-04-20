@@ -70,17 +70,16 @@ function HomePageContent() {
                 Monthly Access
               </p>
               <h2 className="mt-2 text-3xl font-bold text-white">
-                R250<span className="ml-1 text-base font-medium text-slate-300">/ month</span>
+                R50<span className="ml-1 text-base font-medium text-slate-300">/ month</span>
               </h2>
               <p className="mt-2 text-slate-200">
-                Full access for users who want ongoing support and deeper continuity.
+                Full access for users who want real support and deeper continuity.
               </p>
             </div>
 
             <ul className="space-y-3 text-sm text-slate-200">
-              <li>• Ongoing access to Alina</li>
-              <li>• Built for consistency and deeper conversations</li>
-              <li>• Waitlist pricing is still honored automatically at checkout</li>
+              <li>• Unlimited daily access to Alina</li>
+              <li>• Memory, vitals tracking, and deeper conversations</li>
             </ul>
 
             <button
