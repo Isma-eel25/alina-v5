@@ -1019,7 +1019,7 @@ export default function AlinaChat() {
   if (!activeSession && sessions.length > 0) return null;
 
   return (
-    <div className="flex h-screen w-full bg-[#020617] text-slate-100 font-sans overflow-hidden selection:bg-cyan-500/30">
+    <div className="flex h-[100dvh] w-full bg-[#020617] text-slate-100 font-sans overflow-hidden selection:bg-cyan-500/30">
       {showUpgrade && (
         <div className="absolute top-4 left-1/2 -translate-x-1/2 z-50 w-[min(92vw,620px)] rounded-2xl border border-yellow-400/25 bg-yellow-400/10 px-4 py-3 shadow-lg backdrop-blur">
           <div className="flex items-center justify-between gap-3">
