@@ -1,4 +1,4 @@
-// src/app/api/brain/route.ts
+﻿// src/app/api/brain/route.ts
 // 🧠 Alina Brain API – short-term memory + vitals + long-term memory context
 // Clinical Memory Capture Engine v1 (event memories)
 // + Clinical State Summary Injection (derived from recent event memories)
