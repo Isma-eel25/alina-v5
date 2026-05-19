@@ -311,6 +311,7 @@ export default function AlinaChat() {
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const [userEmail, setUserEmail] = useState<string | null>(null);
   const [isLoggingOut, setIsLoggingOut] = useState(false);
+  const [copied, setCopied] = useState(false);
 
   const router = useRouter();
   const supabase = createSupabaseBrowserClient();
@@ -335,6 +336,17 @@ export default function AlinaChat() {
   const messages = activeSession?.messages ?? [];
   const memories = activeSession?.memories ?? [];
   const userProfile = activeSession?.userProfile ?? null;
+
+  const handleCopyChat = useCallback(() => {
+    if (!messages.length) return;
+    const text = messages
+      .map((m) => `${m.role === "user" ? "You" : "Alina"} [${new Date(m.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}]:\n${m.content}`)
+      .join("\n\n---\n\n");
+    navigator.clipboard.writeText(text).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    });
+  }, [messages]);
 
   const totalMessageCount = useMemo(() =>
     sessions.reduce((acc, s) => acc + (s.messages?.length ?? 0), 0),
@@ -930,11 +942,23 @@ export default function AlinaChat() {
             </div>
           </div>
 
-          {mode === "chat" && activeSession && messages.length > 0 && (
-            <span className="text-[10px] text-white/18" style={{ fontFamily: "'DM Mono', monospace" }}>
-              {messages.length} msg
-            </span>
-          )}
+          <div className="flex items-center gap-3">
+            {mode === "chat" && activeSession && messages.length > 0 && (
+              <span className="text-[10px] text-white/18" style={{ fontFamily: "'DM Mono', monospace" }}>
+                {messages.length} msg
+              </span>
+            )}
+            {mode === "chat" && messages.length > 0 && (
+              <button
+                onClick={handleCopyChat}
+                className="text-[10px] text-white/20 hover:text-white/50 transition-colors"
+                style={{ fontFamily: "'DM Mono', monospace", letterSpacing: "0.05em" }}
+                title="Copy full chat"
+              >
+                {copied ? "copied" : "copy chat"}
+              </button>
+            )}
+          </div>
         </header>
 
         {/* Content area */}
