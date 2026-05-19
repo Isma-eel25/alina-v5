@@ -5,7 +5,7 @@
 // NEVER leaks raw internal thinking to the user.
 
 import { NextRequest } from "next/server";
-import Anthropic from "@anthropic-ai/sdk";
+import Groq from "groq-sdk";
 import { buildShortTermMemory, toChatMessages } from "@/lib/memory";
 import { addMemoryFromReflection } from "@/lib/longTermMemory";
 import type { VitalsSnapshot } from "@/lib/vitals";
@@ -19,8 +19,8 @@ import { createSupabaseServerClient } from "@/lib/supabase/server";
 
 export const runtime = "nodejs";
 
-const client = new Anthropic({
-  apiKey: process.env.ANTHROPIC_API_KEY!,
+const client = new Groq({
+  apiKey: process.env.GROQ_API_KEY!,
 });
 
 type ChatRole = "user" | "assistant";
@@ -160,12 +160,7 @@ ${vitalsSummary ?? "None"}
 }
 
 function extractClaudeText(resp: any): string {
-  const blocks = resp?.content ?? [];
-  let text = "";
-  for (const block of blocks) {
-    if (block.type === "text") text += block.text;
-  }
-  return text.trim();
+  return (resp?.choices?.[0]?.message?.content ?? "").trim();
 }
 
 function coerceUserProfileSummary(x: unknown): string {
@@ -219,11 +214,13 @@ export async function POST(req: NextRequest) {
       let lastErr: any;
       for (let attempt = 1; attempt <= maxAttempts; attempt++) {
         try {
-          resp = await client.messages.create({
-            model: "claude-sonnet-4-5-20250929",
+          resp = await client.chat.completions.create({
+            model: "llama-3.3-70b-versatile",
             max_tokens: 800,
-            system: "Return STRICT JSON ONLY.",
-            messages: [{ role: "user", content: prompt }],
+            messages: [
+              { role: "system", content: "Return STRICT JSON ONLY." },
+              { role: "user", content: prompt }
+            ],
           });
           break;
         } catch (err: any) {
