@@ -12,7 +12,7 @@
 // - Do NOT modify retrieval scoring
 
 import { NextRequest } from "next/server";
-import Anthropic from "@anthropic-ai/sdk";
+import Groq from "groq-sdk";
 import { Pool } from "pg";
 import { buildShortTermMemory, toChatMessages } from "@/lib/memory";
 import * as LTM from "@/lib/longTermMemory";
@@ -60,7 +60,7 @@ import {
 
 import { createSupabaseServerClient, createSupabaseAdminClient } from "@/lib/supabase/server";
 
-const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
@@ -1501,10 +1501,7 @@ function createStreamingTextTransformer(options: {
 
       try {
         for await (const event of options.upstream as any) {
-          if (event?.type !== "content_block_delta") continue;
-          if (event?.delta?.type !== "text_delta") continue;
-
-          const delta: string = event?.delta?.text ?? "";
+          const delta: string = event?.choices?.[0]?.delta?.content ?? "";
           if (!delta) continue;
 
           pending += delta;
@@ -2386,9 +2383,8 @@ ${internalDialogueBlock}`
     // ---- Model Router v1 ----
     function chooseModel(
       _lastUserMessageContent: string | null,
-    ): "claude-sonnet-4-5" {
-      // Claude Sonnet is the single model for now.
-      return "claude-sonnet-4-5";
+    ): "llama-3.3-70b-versatile" {
+      return "llama-3.3-70b-versatile";
     }
 
     const modelToUse = chooseModel(lastUserMessage?.content ?? null);
@@ -2407,18 +2403,22 @@ ${internalDialogueBlock}`
 
     let stream: any;
     try {
-      stream = await (anthropic as any).messages.create({
+      const groqMessages = [
+        { role: "system" as const, content: systemContent },
+        ...(Array.isArray(anthropicInput)
+          ? anthropicInput
+          : [{ role: "user" as const, content: String(anthropicInput) }]),
+      ];
+
+      stream = await groq.chat.completions.create({
         model: modelToUse,
         max_tokens: 2048,
         temperature: 0.55,
-        system: systemContent,
         stream: true,
-        messages: Array.isArray(anthropicInput)
-          ? anthropicInput
-          : [{ role: "user", content: String(anthropicInput) }],
-      } as any);
+        messages: groqMessages,
+      });
     } catch (error) {
-      brainLog(requestId, "anthropic_request_failed", {
+      brainLog(requestId, "groq_request_failed", {
         userId: canonicalUserId,
         model: modelToUse,
         error:
@@ -2433,12 +2433,12 @@ ${internalDialogueBlock}`
         setCookieHeader,
         extraBody: {
           type: "brain_fallback",
-          reason: "anthropic_request_failed",
+          reason: "groq_request_failed",
         },
       });
     }
 
-    brainLog(requestId, "anthropic_request_succeeded", {
+    brainLog(requestId, "groq_request_succeeded", {
       userId: canonicalUserId,
       model: modelToUse,
       streamOpened: true,
