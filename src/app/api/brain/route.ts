@@ -154,37 +154,11 @@ interface UsageLimitResult {
 // at the process level before Pool instantiation is the only reliable fix.
 
 
-const usagePgPool = (() => {
-  const url = process.env.DATABASE_URL;
-  if (!url || typeof url !== "string") return null;
-  return new Pool({ connectionString: url, ssl: { rejectUnauthorized: false } });
-})();
+const usagePgPool = null; // Usage limits disabled
 let usageTablesInitialized = false;
 
 async function ensureUsageTables() {
-  if (!usagePgPool || usageTablesInitialized) return;
-
-  // Monthly usage for free plan (10 messages per month)
-  await usagePgPool.query(`
-    create table if not exists alina_monthly_usage (
-      user_id text not null,
-      period_start date not null,
-      message_count integer not null default 0,
-      primary key (user_id, period_start)
-    );
-  `);
-
-  // Daily usage for pro plan (100 messages per day)
-  await usagePgPool.query(`
-    create table if not exists alina_daily_usage (
-      user_id text not null,
-      day date not null,
-      message_count integer not null default 0,
-      primary key (user_id, day)
-    );
-  `);
-
-  usageTablesInitialized = true;
+  // Usage limits disabled — no-op
 }
 
 // In production:
