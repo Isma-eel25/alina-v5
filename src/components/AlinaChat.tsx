@@ -1119,7 +1119,7 @@ export default function AlinaChat() {
               )}
 
               {/* Input area */}
-              <div className="flex-shrink-0 px-4 pb-4 pt-2">
+              <div className="flex-shrink-0 px-4 pt-2" style={{ paddingBottom: "max(1rem, env(safe-area-inset-bottom))" }}>
                 <form onSubmit={handleSubmit} className="max-w-2xl mx-auto">
                   {attachedFile && (
                     <div className="flex items-center gap-2 mb-2">
