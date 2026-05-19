@@ -219,8 +219,9 @@ async function getUserPlan(userId: string): Promise<SubscriptionPlan> {
   return "free";
 }
 
-async function applyUsageLimits(userId: string): Promise<UsageLimitResult> {
-  const base: UsageLimitResult = {
+async function applyUsageLimits(_userId: string): Promise<UsageLimitResult> {
+  // Usage limits disabled — all users have unlimited access.
+  return {
     plan: "free",
     period: "unlimited",
     limit: null,
@@ -229,110 +230,6 @@ async function applyUsageLimits(userId: string): Promise<UsageLimitResult> {
     quotaExceeded: false,
     shouldMentionMonthlyLimit: false,
   };
-
-  if (!usagePgPool) {
-    // No DATABASE_URL configured – skip limits but keep code path safe.
-    return base;
-  }
-
-  await ensureUsageTables();
-
-  const plan = await getUserPlan(userId);
-
-  // Free plan – 10 messages per month
-  if (plan === "free") {
-    const now = new Date();
-    const periodStart = new Date(now.getFullYear(), now.getMonth(), 1);
-    const periodStartStr = periodStart.toISOString().slice(0, 10);
-    const limit = 10;
-
-    const res = await usagePgPool.query(
-      `select message_count from alina_monthly_usage where user_id = $1 and period_start = $2`,
-      [userId, periodStartStr],
-    );
-
-    const existingCount = res.rows[0]?.message_count ?? 0;
-
-    if (existingCount >= limit) {
-      return {
-        plan,
-        period: "month",
-        limit,
-        used: existingCount,
-        remaining: 0,
-        quotaExceeded: true,
-        shouldMentionMonthlyLimit: false,
-      };
-    }
-
-    const newCount = existingCount + 1;
-
-    await usagePgPool.query(
-      `insert into alina_monthly_usage (user_id, period_start, message_count)
-       values ($1, $2, $3)
-       on conflict (user_id, period_start)
-       do update set message_count = excluded.message_count`,
-      [userId, periodStartStr, newCount],
-    );
-
-    return {
-      plan,
-      period: "month",
-      limit,
-      used: newCount,
-      remaining: Math.max(limit - newCount, 0),
-      quotaExceeded: false,
-      shouldMentionMonthlyLimit: existingCount === 0,
-    };
-  }
-
-  // Pro plan – 100 messages per day
-  if (plan === "pro") {
-    const now = new Date();
-    const dayStr = now.toISOString().slice(0, 10);
-    const limit = 100;
-
-    const res = await usagePgPool.query(
-      `select message_count from alina_daily_usage where user_id = $1 and day = $2`,
-      [userId, dayStr],
-    );
-
-    const existingCount = res.rows[0]?.message_count ?? 0;
-
-    if (existingCount >= limit) {
-      return {
-        plan,
-        period: "day",
-        limit,
-        used: existingCount,
-        remaining: 0,
-        quotaExceeded: true,
-        shouldMentionMonthlyLimit: false,
-      };
-    }
-
-    const newCount = existingCount + 1;
-
-    await usagePgPool.query(
-      `insert into alina_daily_usage (user_id, day, message_count)
-       values ($1, $2, $3)
-       on conflict (user_id, day)
-       do update set message_count = excluded.message_count`,
-      [userId, dayStr, newCount],
-    );
-
-    return {
-      plan,
-      period: "day",
-      limit,
-      used: newCount,
-      remaining: Math.max(limit - newCount, 0),
-      quotaExceeded: false,
-      shouldMentionMonthlyLimit: false,
-    };
-  }
-
-  return base;
 }
 
 

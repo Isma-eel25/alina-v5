@@ -1017,14 +1017,18 @@ export default function AlinaChat() {
                                 {m.isStreaming && !m.content ? (
                                   <ThinkingIndicator />
                                 ) : (
-                                  <div className="prose prose-invert max-w-none break-words overflow-hidden" style={{ fontSize: "0.875rem", lineHeight: "1.75" }}>
-                                    <ReactMarkdown
-                                      remarkPlugins={[remarkGfm, remarkMath]}
-                                      rehypePlugins={[rehypeKatex]}
-                                      components={MarkdownComponents}
-                                    >
-                                      {m.content}
-                                    </ReactMarkdown>
+                                  <div className="space-y-3">
+                                    {m.content.split(/\n{2,}/).filter(p => p.trim()).map((para, i) => (
+                                      <div key={i} className="prose prose-invert max-w-none break-words overflow-hidden" style={{ fontSize: "0.875rem", lineHeight: "1.75" }}>
+                                        <ReactMarkdown
+                                          remarkPlugins={[remarkGfm, remarkMath]}
+                                          rehypePlugins={[rehypeKatex]}
+                                          components={MarkdownComponents}
+                                        >
+                                          {para}
+                                        </ReactMarkdown>
+                                      </div>
+                                    ))}
                                   </div>
                                 )}
                               </div>
